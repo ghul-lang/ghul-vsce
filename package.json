@@ -187,7 +187,8 @@
     "watch": "tsc -b -w",
     "clean": "rimraf client/out && rimraf server/out && rimraf language-server/out",
     "postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
-    "test": "npm run genversion && npm run test:client && npm run test:server",
+    "test": "npm run genversion && npm run test:client && npm run test:server && npm run test:grammar",
+    "test:grammar": "node test/grammar-patterns.mjs",
     "test:client": "cd client && npm test",
     "test:server": "cd server && npm run typecheck && npx jest",
     "test:integration": "npm run genversion && npx webpack --mode production --config ./server/webpack.config.js && cd server && npm run test:integration"
@@ -201,6 +202,7 @@
     "ovsx": "^0.10.12",
     "rimraf": "^6.0.1",
     "typescript": "^6.0.3",
+    "vscode-oniguruma": "^2.0.1",
     "webpack": "^5.106.2",
     "webpack-cli": "^7.0.2"
   },
