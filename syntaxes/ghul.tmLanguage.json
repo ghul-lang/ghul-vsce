@@ -117,11 +117,11 @@
 				},
 				{
 					"name": "storage.modifier.ghul",
-					"match": "(\\b(?<!\\`)(abstract|static|public|protected|private|field|let|mut|rec|out|init|@)\\b)|(\\b_(?=[A-Za-z]))"
+					"match": "(\\b(?<!\\`)(abstract|static|public|protected|private|field|let|mut|rec|out|init|@)\\b)|(\\b_(?=[\\p{L}\\p{Nl}]))"
 				},
 				{
 					"name": "keyword.operator.ghul",
-					"match": "(!|\\$|%|\\^|&|\\*|-|\\+|=|\\||~|#|\\\\|<|>|\\.|\\?|\\/|\\*)+"
+					"match": "(?:[!$%^&*\\-+=|~#\\\\<>.?\\/]|(?=[^\\x00-\\x7F])\\p{S})+"
 				},
 				{
 					"comment": "impl header scope - ends on lookahead for `is`, or at a blank line so an unfinished header doesn't consume the rest of the file.",
@@ -146,7 +146,7 @@
 				},
 				{
 					"name": "entity.name.type.ghul",
-					"match": "\\b([A-Z][a-zA-Z0-9_\\`]*)\\b"
+					"match": "\\b(\\p{Lu}[\\p{L}\\p{Nl}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Pc}_\\`]*)\\b"
 				},
 				{
 					"name": "keyword.control.ghul",
@@ -154,7 +154,7 @@
 				},
 				{
 					"name": "entity.name.function.ghul",
-					"match": "((?<=_)|(\\b))([a-zA-Z_][a-zA-Z0-9_]*)(?=\\s*\\()"
+					"match": "((?<=_)|(\\b))([\\p{L}\\p{Nl}_][\\p{L}\\p{Nl}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Pc}]*)(?=\\s*\\()"
 				},
 				{
 					"name": "entity.name.type.ghul",
@@ -162,15 +162,15 @@
 				},
 				{
 					"name": "entity.name.ghul variable.other.ghul",
-					"match": "((?<=_)|(\\b))([a-zA-Z\\`][a-zA-Z0-9_]*)\\b"
+					"match": "((?<=_)|(\\b))([\\p{L}\\p{Nl}\\`][\\p{L}\\p{Nl}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Pc}]*)\\b"
 				},
 				{
 					"name": "entity.name.function.ghul",
-					"match": "((?<=_)|(\\b))([a-zA-Z_][a-zA-Z0-9_]*)(?=\\s*\\()"
+					"match": "((?<=_)|(\\b))([\\p{L}\\p{Nl}_][\\p{L}\\p{Nl}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Pc}]*)(?=\\s*\\()"
 				},
 				{
 					"name": "entity.name.type.ghul",
-					"match": "\\b([A-Z][a-zA-Z0-9_\\`]*)\\b"
+					"match": "\\b(\\p{Lu}[\\p{L}\\p{Nl}\\p{Nd}\\p{Mn}\\p{Mc}\\p{Pc}_\\`]*)\\b"
 				},
 				{
 					"name": "constant.character.ghul",
