@@ -48,7 +48,7 @@ jobs:
     # get a -beta.<run> prerelease so they never collide with a real release.
     - name: Determine the version
       id: version
-      uses: degory/create-version@v1.0.0
+      uses: ghul-lang/create-version@v1.0.0
       with:
         version: ${{ github.event.inputs.version }}
         prerelease: ${{ github.event_name == 'pull_request' && format('beta.{0}', github.run_number) || '' }}

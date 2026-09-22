@@ -29,7 +29,7 @@ jobs:
     concurrency:
       group: claude-review-${{ github.event.pull_request.number || inputs.pull-request-number }}
       cancel-in-progress: true
-    uses: degory/ghul-code-review/.github/workflows/review.yml@v11
+    uses: ghul-lang/ghul-code-review/.github/workflows/review.yml@v11
     with:
       pull-request-number: ${{ inputs.pull-request-number }}
       idle-timeout-seconds: ${{ fromJSON(vars.CLAUDE_REVIEW_IDLE_TIMEOUT_SECONDS || '90') }}
