@@ -8,7 +8,7 @@
   "homepage": "https://ghul.dev",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/degory/ghul-vsce.git"
+    "url": "git+https://github.com/ghul-lang/ghul-vsce.git"
   },
   "keywords": [
     "ghul",
