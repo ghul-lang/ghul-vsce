@@ -112,6 +112,9 @@ interface CompletionItemDto {
     // the classifier separately in `kind_label`.
     description: string;
     kind_label?: string | null;
+    // The declaration's `///` doc comment, Markdown; absent from an
+    // analyser that predates doc comments.
+    doc?: string | null;
     insert_text?: string;
 }
 
@@ -168,6 +171,9 @@ interface HoverResponse {
     // existed. A newer analyser still emits it so this fallback covers a
     // fresh extension paired with an older compiler.
     description?: string | null;
+    // The declaration's `///` doc comment, Markdown; absent from an
+    // analyser that predates doc comments.
+    doc?: string | null;
 }
 
 interface SemanticTokensResponse {
@@ -826,6 +832,9 @@ export class ResponseHandler {
                 let plain = response.kind_label
                     ? `${signature} // ${response.kind_label}`
                     : signature;
+                if (response.doc) {
+                    plain = `${plain}\n\n${response.doc}`;
+                }
                 resolve({
                     contents: { kind: "plaintext", value: plain }
                 });
@@ -839,6 +848,9 @@ export class ResponseHandler {
             if (response.kind_label) {
                 parts.push("");
                 parts.push(`_${response.kind_label}_`);
+            }
+            if (response.doc) {
+                parts.push("", "---", "", response.doc);
             }
             resolve({
                 contents: { kind: "markdown", value: parts.join("\n") }
@@ -902,10 +914,17 @@ export class ResponseHandler {
                     detail: item.description
                 };
 
+                const documentation: string[] = [];
                 if (item.kind_label) {
+                    documentation.push(`_${item.kind_label}_`);
+                }
+                if (item.doc) {
+                    documentation.push(item.doc);
+                }
+                if (documentation.length > 0) {
                     completion.documentation = {
                         kind: MarkupKind.Markdown,
-                        value: `_${item.kind_label}_`
+                        value: documentation.join("\n\n")
                     };
                 }
 
