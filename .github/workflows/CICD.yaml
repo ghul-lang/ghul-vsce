@@ -212,11 +212,26 @@ jobs:
         name: language-server-package
         path: ghul-language-server-${{ needs.version.outputs.package }}.tgz
 
+    # Each publish step skips a version its registry already has, so re-running
+    # a release that failed part way publishes only what is missing.
     - name: VSCE publish
-      run: npx @vscode/vsce publish -p ${{ secrets.VSCE_PAT }}
+      run: |
+        version=${{ needs.version.outputs.package }}
+        if npx @vscode/vsce show degory.ghul --json | jq -e --arg v "$version" '.versions[] | select(.version == $v)' >/dev/null; then
+          echo "::notice::degory.ghul $version is already on the Marketplace"
+        else
+          npx @vscode/vsce publish -p ${{ secrets.VSCE_PAT }}
+        fi
 
     - name: Open VSX publish
-      run: npx ovsx publish "ghul-${{ needs.version.outputs.package }}.vsix" -p ${{ secrets.OPEN_VSX_PAT }}
+      run: |
+        version=${{ needs.version.outputs.package }}
+        status=$(curl -s -o /dev/null -w "%{http_code}" "https://open-vsx.org/api/degory/ghul/$version")
+        if [ "$status" = 200 ]; then
+          echo "::notice::degory.ghul $version is already on Open VSX"
+        else
+          npx ovsx publish "ghul-$version.vsix" -p ${{ secrets.OPEN_VSX_PAT }}
+        fi
 
     # A trusted publisher can only be attached to a package that already exists,
     # so the first version has to be published by hand. Set the repository
@@ -231,7 +246,13 @@ jobs:
 
     - name: npm publish
       if: ${{ vars.NPM_TRUSTED_PUBLISHING == 'true' }}
-      run: npm publish --access public "ghul-language-server-${{ needs.version.outputs.package }}.tgz"
+      run: |
+        version=${{ needs.version.outputs.package }}
+        if npm view "@ghul/language-server@$version" version >/dev/null 2>&1; then
+          echo "::notice::@ghul/language-server $version is already on npm"
+        else
+          npm publish --access public "ghul-language-server-$version.tgz"
+        fi
 
     - name: Skipping npm publish
       if: ${{ vars.NPM_TRUSTED_PUBLISHING != 'true' }}
