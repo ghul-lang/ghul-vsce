@@ -447,6 +447,24 @@ describe('ResponseHandler', () => {
         });
     });
 
+    it('handleHover appends the doc comment below a rule', async () => {
+        const p = responseHandler.expectHover();
+
+        responseHandler.handleHover({
+            kind: 'hover',
+            signature: 'grow() -> void',
+            kind_label: 'method',
+            doc: 'Doubles the size.\n\n- by: how much',
+        } as any);
+
+        await expect(p).resolves.toEqual({
+            contents: {
+                kind: 'markdown',
+                value: '```ghul\ngrow() -> void\n```\n\n_method_\n\n---\n\nDoubles the size.\n\n- by: how much',
+            },
+        });
+    });
+
     it('should enqueue and resolve definition promise on expectDefinition and handleDefinition', async () => {
         const definitionPromise = responseHandler.expectDefinition();
 
@@ -524,6 +542,33 @@ describe('ResponseHandler', () => {
                 documentation: { kind: 'markdown', value: '_pure method_' },
             },
             { label: 'plain', kind: 1, detail: 'x: int' },
+        ]);
+    });
+
+    it('handleCompletion puts the doc comment after the kind label', async () => {
+        const completionPromise = responseHandler.expectCompletion();
+
+        responseHandler.handleCompletion({
+            kind: 'completion',
+            items: [
+                { name: 'grow', kind: 2, description: 'grow() -> void', kind_label: 'method', doc: 'Doubles the size.' },
+                { name: 'size', kind: 10, description: 'size: int', doc: 'How big it is.' },
+            ],
+        } as any);
+
+        expect(await completionPromise).toEqual([
+            {
+                label: 'grow',
+                kind: 2,
+                detail: 'grow() -> void',
+                documentation: { kind: 'markdown', value: '_method_\n\nDoubles the size.' },
+            },
+            {
+                label: 'size',
+                kind: 10,
+                detail: 'size: int',
+                documentation: { kind: 'markdown', value: 'How big it is.' },
+            },
         ]);
     });
 
