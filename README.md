@@ -1,11 +1,11 @@
 # ghūl programming language Visual Studio Code extension
 
-[![CI/CD](https://img.shields.io/github/actions/workflow/status/degory/ghul-vsce/CICD.yaml?branch=main)](https://github.com/ghul-lang/ghul-vsce/actions/workflows/CICD.yaml?query=branch%3Amain)
+[![CI/CD](https://img.shields.io/github/actions/workflow/status/ghul-lang/ghul-vsce/CICD.yaml?branch=main)](https://github.com/ghul-lang/ghul-vsce/actions/workflows/CICD.yaml?query=branch%3Amain)
 [![Visual Studio Marketplace](https://img.shields.io/visual-studio-marketplace/v/degory.ghul)](https://marketplace.visualstudio.com/items?itemName=degory.ghul)
-[![Release](https://img.shields.io/github/v/release/degory/ghul-vsce?label=release)](https://github.com/ghul-lang/ghul-vsce/releases)
-[![Release Date](https://img.shields.io/github/release-date/degory/ghul-vsce)](https://github.com/ghul-lang/ghul-vsce/releases)
-[![Issues](https://img.shields.io/github/issues-search/degory/ghul?query=is%3Aopen%20is%3Aissue%20label%3Aghul-vsce&label=issues)](https://github.com/ghul-lang/ghul/issues?q=is%3Aopen+is%3Aissue+label%3Aghul-vsce)
-[![License](https://img.shields.io/github/license/degory/ghul-vsce)](https://github.com/ghul-lang/ghul-vsce/blob/main/LICENSE)
+[![Release](https://img.shields.io/github/v/release/ghul-lang/ghul-vsce?label=release)](https://github.com/ghul-lang/ghul-vsce/releases)
+[![Release Date](https://img.shields.io/github/release-date/ghul-lang/ghul-vsce)](https://github.com/ghul-lang/ghul-vsce/releases)
+[![Issues](https://img.shields.io/github/issues-search/ghul-lang/ghul?query=is%3Aopen%20is%3Aissue%20label%3Aghul-vsce&label=issues)](https://github.com/ghul-lang/ghul/issues?q=is%3Aopen+is%3Aissue+label%3Aghul-vsce)
+[![License](https://img.shields.io/github/license/ghul-lang/ghul-vsce)](https://github.com/ghul-lang/ghul-vsce/blob/main/LICENSE)
 [![ghūl](https://img.shields.io/badge/gh%C5%ABl-100%25!-information)](https://ghul.dev)
 
 This Visual Studio Code extension provides support for the [ghūl programming language](https://www.ghul.dev/), including:
