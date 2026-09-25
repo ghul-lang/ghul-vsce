@@ -7,7 +7,7 @@
   "license": "GPL-3.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/degory/ghul-vsce.git"
+    "url": "https://github.com/ghul-lang/ghul-vsce.git"
   },
   "icon": "images/ghul-logo-icon.png",
   "engines": {

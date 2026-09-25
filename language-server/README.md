@@ -23,7 +23,7 @@ npm install -g @ghul/language-server
 The command the package installs is `ghul-language-server`.
 
 Or download `ghul-language-server-<version>.tgz` from a
-[release](https://github.com/degory/ghul-vsce/releases) and unpack it. The
+[release](https://github.com/ghul-lang/ghul-vsce/releases) and unpack it. The
 contents are under `package/`, and the executable is
 `package/bin/ghul-language-server.js`.
 
