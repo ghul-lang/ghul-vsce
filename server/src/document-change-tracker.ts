@@ -21,6 +21,7 @@ export class DocumentChangeTracker {
     workspace: ReinitializableWorkspace;
     edit_queue: EditQueue;
     globs: string[];
+    exclude_globs: string[];
     documents: TextDocuments<TextDocument>;
     missing_assemblies: Set<string>;
 
@@ -31,11 +32,13 @@ export class DocumentChangeTracker {
         edit_queue: EditQueue,
         globs: string[],
         documents: TextDocuments<TextDocument>,
-        missing_assemblies: string[] = []
+        missing_assemblies: string[] = [],
+        exclude_globs: string[] = []
     ) {
         this.workspace = workspace;
         this.edit_queue = edit_queue;
         this.globs = globs;
+        this.exclude_globs = exclude_globs;
         this.documents = documents;
         this.missing_assemblies = new Set(
             missing_assemblies.map(assembly => assembly.replace(/\\/g, '/'))
@@ -160,10 +163,8 @@ export class DocumentChangeTracker {
         let fn_munged = fn.replace(/\\/g, "/");
 
         if (
-            this.globs
-                .find(
-                    glob => minimatch(fn_munged, glob)
-                )
+            this.globs.some(glob => minimatch(fn_munged, glob)) &&
+            !this.exclude_globs.some(glob => minimatch(fn_munged, glob))
         ) {
             return fn;
         }

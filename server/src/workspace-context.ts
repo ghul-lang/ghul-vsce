@@ -393,7 +393,8 @@ export class WorkspaceContext {
             this.edit_queue,
             this.config.source.map(glob => `${workspace_root_munged}/${glob}`),
             this.documents,
-            this.config.missing_assemblies
+            this.config.missing_assemblies,
+            (this.config.exclude ?? []).map(glob => `${workspace_root_munged}/${glob}`)
         );
 
         this.watchMissingAssemblies();

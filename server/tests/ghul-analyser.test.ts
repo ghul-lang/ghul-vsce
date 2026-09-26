@@ -109,6 +109,37 @@ describe('GhulAnalyser', () => {
         expect(editQueue.started[0].find(d => d.uri.endsWith('a.ghul'))!.source).toBe('class A is {}');
     });
 
+    it('leaves out files an exclude pattern matches', () => {
+        mkdirSync(join(workspace, 'tasks', 'one'), { recursive: true });
+        writeFileSync(join(workspace, 'tasks', 'one', 'one.ghul'), 'task');
+        writeFileSync(join(workspace, 'tasks', 'one', 'stand-in.ghul'), 'stand-in');
+
+        new GhulAnalyser(
+            editQueue as unknown as EditQueue,
+            configEvents,
+            serverEvents,
+            fakeDocuments(),
+        );
+
+        configEvents.configAvailable(workspace, {
+            block: false,
+            compiler: ['c'],
+            source: ['tasks/**/*.ghul'],
+            exclude: ['tasks/**/stand-in.ghul'],
+            arguments: [],
+            want_plaintext_hover: false,
+            incremental_analysis: false,
+            missing_assemblies: [],
+            problems: [],
+        });
+
+        serverEvents.listening();
+
+        const uris = editQueue.started[0].map(d => d.uri);
+        expect(uris).toHaveLength(1);
+        expect(uris[0]).toMatch(/tasks\/one\/one\.ghul$/);
+    });
+
     it('prefers an open editor buffer over the file on disk', () => {
         writeFileSync(join(workspace, 'a.ghul'), 'class A is {} // on disk');
 
