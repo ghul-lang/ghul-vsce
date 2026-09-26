@@ -301,6 +301,65 @@ describe('getGhulConfig', () => {
         expect(cfg.source).toEqual(['src/**/*.ghul']);
     });
 
+    describe('an Exclude on a <GhulSources> item', () => {
+        const project = `<?xml version="1.0"?>
+<Project Sdk="Ghul.Sdk">
+    <PropertyGroup>
+        <GhulCompiler>ghul-compiler</GhulCompiler>
+    </PropertyGroup>
+    <ItemGroup>
+        <GhulSources Include="tasks/**/*.ghul" Exclude="tasks/**/stand-in.ghul;tasks/**/scratch.ghul" />
+        <GhulSources Include="root/**/*.ghul" />
+    </ItemGroup>
+</Project>`;
+
+        it('is read from the project file alongside its Include', () => {
+            const workspace = ws();
+            writeFileSync(join(workspace, 'test.ghulproj'), project);
+
+            const cfg = getGhulConfig(workspace);
+
+            expect(cfg.source).toEqual(['tasks/**/*.ghul', 'root/**/*.ghul']);
+            expect(cfg.exclude).toEqual(['tasks/**/stand-in.ghul', 'tasks/**/scratch.ghul']);
+        });
+
+        it('still applies when the build published the includes', () => {
+            // The published globs carry only includes, so the project file is
+            // where the excludes come from either way.
+            const workspace = ws();
+            writeFileSync(join(workspace, 'test.ghulproj'), project);
+
+            const globs_file = join(workspace, 'source-globs.txt');
+            writeFileSync(globs_file, 'tasks/**/*.ghul\nroot/**/*.ghul\n');
+
+            const cfg = getGhulConfig(workspace, {}, join(workspace, 'project.rsp'), globs_file);
+
+            expect(cfg.source).toEqual(['tasks/**/*.ghul', 'root/**/*.ghul']);
+            expect(cfg.exclude).toEqual(['tasks/**/stand-in.ghul', 'tasks/**/scratch.ghul']);
+        });
+
+        it('does not apply to sources ghul.json names', () => {
+            const workspace = ws();
+            writeFileSync(join(workspace, 'test.ghulproj'), project);
+            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
+
+            const cfg = getGhulConfig(workspace);
+
+            expect(cfg.exclude).toEqual([]);
+        });
+
+        it('is skipped when the item carries a Condition', () => {
+            const workspace = ws();
+            writeFileSync(join(workspace, 'test.ghulproj'), project.replace(
+                'Exclude="tasks/**/stand-in.ghul;tasks/**/scratch.ghul"',
+                'Exclude="tasks/**/stand-in.ghul" Condition="\'$(CI)\' == \'true\'"'));
+
+            const cfg = getGhulConfig(workspace);
+
+            expect(cfg.exclude).toEqual([]);
+        });
+    });
+
     it('forwards unconditioned <GhulOptions> additively and skips Condition-guarded ones', () => {
         const workspace = ws();
         const proj = `<?xml version="1.0"?>

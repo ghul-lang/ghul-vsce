@@ -82,6 +82,15 @@ describe('DocumentChangeTracker', () => {
         expect(validSourceFile).toBe(path);
     });
 
+    it('should return null for a source file an exclude pattern matches', () => {
+        documentChangeTracker = new DocumentChangeTracker(
+            workspace, editQueue, globs, documents, [], ['**/stand-in.ghul']
+        );
+
+        expect(documentChangeTracker.tryGetValidSourceFile(URI.file('/path/to/stand-in.ghul').toString())).toBeNull();
+        expect(documentChangeTracker.tryGetValidSourceFile(URI.file('/path/to/task.ghul').toString())).toBe('/path/to/task.ghul');
+    });
+
     it('should return null for an invalid source file', () => {
         const uri = 'file:///path/to/document.js';
         const invalidSourceFile = documentChangeTracker.tryGetValidSourceFile(uri);

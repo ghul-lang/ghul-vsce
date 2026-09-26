@@ -11,6 +11,10 @@ export interface GhulConfig {
 	block: boolean,
 	compiler: string[],
 	source: string[],
+	// Patterns an Exclude attribute on the project's <GhulSources> items
+	// takes back out of the source set, relative to the workspace. Applied to
+	// every source pattern, not only the item that declared it.
+	exclude?: string[],
 	arguments: string[],
 	want_plaintext_hover: boolean,
 	incremental_analysis: boolean,
@@ -66,9 +70,14 @@ interface GhulProjectXml {
 		],
 		ItemGroup: [
 			{
+				"$"?: {
+					"Condition"?: string
+				},
 				GhulSources: {
 					"$": {
-						"Include": string
+						"Include": string,
+						"Exclude"?: string,
+						"Condition"?: string
 					}
 				}[],
 				GhulOptions: {
@@ -172,6 +181,15 @@ function readResponseFile(
 // The glob patterns the build says this project's sources are found by, as
 // written rather than as expanded - the form a filesystem watcher needs - or
 // null when the build published none.
+// An MSBuild item spec: patterns separated by semicolons, surrounding
+// whitespace ignored.
+function splitItemSpec(spec: string): string[] {
+	return spec
+		.split(';')
+		.map(pattern => pattern.trim())
+		.filter(pattern => pattern.length > 0);
+}
+
 function readSourceGlobs(source_globs_file: string, problems: string[]): string[] | null {
 	if (!existsSync(source_globs_file)) {
 		return null;
@@ -215,6 +233,8 @@ export function getGhulConfig(
 			problems.push(problem);
 		}
 	}
+
+	let config_json_source = config.source;
 
 	let compiler: string[];
 
@@ -276,6 +296,8 @@ export function getGhulConfig(
 		}
 	}
 
+	let project_excludes: string[] = [];
+
 	let projects = globSync(workspace + "/*.ghulproj");
 
 	if (projects.length == 1) {
@@ -312,6 +334,24 @@ export function getGhulConfig(
 						}
 					}
 
+					// Read whichever source the includes come from: the
+					// build's published globs carry no excludes, so these are
+					// the only record of them.
+					if (projectXml.Project.ItemGroup) {
+						projectXml.Project.ItemGroup
+							.filter(ig => ig.GhulSources && !ig["$"]?.Condition)
+							.map(ig => ig.GhulSources)
+
+							.forEach(item => {
+								item
+									.filter(pattern => pattern["$"]?.Exclude && !pattern["$"]?.Condition)
+									.forEach(pattern => {
+										project_excludes.push(...splitItemSpec(pattern["$"].Exclude))
+									})
+								}
+							);
+					}
+
 					if (!config.source?.length && projectXml.Project.ItemGroup) {
 						let patterns: string[] = [];
 
@@ -325,7 +365,7 @@ export function getGhulConfig(
 									.map(pattern => pattern["$"]?.Include)
 
 									.forEach(pattern => {
-										patterns.push(pattern)
+										patterns.push(...splitItemSpec(pattern))
 									})
 								}
 							);
@@ -516,12 +556,19 @@ export function getGhulConfig(
 	// actually compiles rather than this reader's guess at them.
 	let published_globs = source_globs_file ? readSourceGlobs(source_globs_file, problems) : null;
 
+	let ghul_json_names_sources = !!config_json_source?.length;
+
 	let source = [...(published_globs ?? config.source ?? ["./**/*.ghul"])];
+
+	// Sources ghul.json names are its own answer, and the project file's
+	// excludes say nothing about them.
+	let exclude = published_globs || !ghul_json_names_sources ? project_excludes : [];
 
     return {
 		block,
 		compiler,
 		source,
+		exclude,
 		arguments: args,
 		want_plaintext_hover: prefer(settings.want_plaintext_hover, config.want_plaintext_hover),
 		incremental_analysis,
