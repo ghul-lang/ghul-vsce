@@ -66,11 +66,11 @@ function withoutCommentsOrTrailingCommas(text: string): string {
     return result.replace(/,(\s*[}\]])/g, '$1');
 }
 
-// The target to analyse for: none when the manifest lists one target or
-// none, since the tool takes the only one by itself, and otherwise the first
-// listed, which the tool would refuse to choose. Null too when the manifest
-// cannot be read: the tool reports that itself, better than this could.
-export function targetToAnalyse(workspace: string): string | null {
+// The first target the manifest lists where it lists more than one, for a
+// ghul tool that will not choose between several itself; null otherwise, and
+// when the manifest cannot be read, which the tool reports better than this
+// could.
+export function firstListedTarget(workspace: string): string | null {
     try {
         let text = readFileSync(join(workspace, MANIFEST), 'utf-8').replace(/^﻿/, '');
         let targets = JSON.parse(withoutCommentsOrTrailingCommas(text))?.targets;
@@ -95,6 +95,27 @@ function describeFailure(what: string, e: unknown, stderr?: string): string {
     return `could not ${what} for ${MANIFEST}: ${detail}`;
 }
 
+// What an older ghul tool says when a manifest lists several targets and
+// none is named. A current one chooses for itself.
+const SEVERAL_TARGETS = 'the manifest lists more than one target';
+
+// The target a response file is for: the one its --target line names, or
+// dotnet, for which a response file names none. Null where the file cannot
+// be read.
+export function responseFileTarget(response_file: string): string | null {
+    let text: string;
+
+    try {
+        text = readFileSync(response_file, 'utf-8');
+    } catch {
+        return null;
+    }
+
+    let named = /^\s*--target\s+(\S+)/m.exec(text);
+
+    return named ? named[1] : 'dotnet';
+}
+
 // Writes the response file and the source globs file for a manifest project.
 // Resolves to a problem to report, or null; never rejects.
 export function generateManifestResponseFile(
@@ -108,26 +129,39 @@ export function generateManifestResponseFile(
     rmSync(source_globs_file, { force: true });
 
     let args = ['project', 'response-file', '--output', response_file, '--source-globs', source_globs_file];
-    let target = targetToAnalyse(workspace);
 
-    if (target) {
-        args.push('--target', target);
-    }
+    // The tool chooses the target as a build would: GHUL_TARGET, then the
+    // manifest's preference, then what the machine can build. A tool too old
+    // to choose is asked for the first target listed instead.
+    let run = (with_args: string[], retry: boolean): Promise<string | null> => new Promise(resolve => {
+        log(`resolving compiler options with '${COMMAND} ${with_args.join(' ')}'...`);
 
-    log(`resolving compiler options with '${COMMAND} ${args.join(' ')}'...`);
-
-    return new Promise(resolve => {
-        execFile(COMMAND, args, { cwd: workspace }, (error, _stdout, stderr) => {
+        execFile(COMMAND, with_args, { cwd: workspace }, (error, _stdout, stderr) => {
             if (error) {
+                let first = retry && stderr?.includes(SEVERAL_TARGETS) ? process.env.GHUL_TARGET || firstListedTarget(workspace) : null;
+
+                if (first) {
+                    resolve(run([...with_args, '--target', first], false));
+                    return;
+                }
+
                 let problem = describeFailure('resolve the compiler options', error, stderr);
                 log(problem);
                 resolve(problem);
                 return;
             }
 
-            resolve(existsSync(response_file) ? null : `${COMMAND} wrote no response file for ${MANIFEST}`);
+            if (!existsSync(response_file)) {
+                resolve(`${COMMAND} wrote no response file for ${MANIFEST}`);
+                return;
+            }
+
+            log(`analysing for the ${responseFileTarget(response_file)} target`);
+            resolve(null);
         });
     });
+
+    return run(args, true);
 }
 
 // The command that runs the compiler the project builds with. Asked at every

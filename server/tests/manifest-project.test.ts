@@ -7,7 +7,8 @@ import {
     generateManifestResponseFile,
     isManifestProject,
     manifestCompiler,
-    targetToAnalyse,
+    firstListedTarget,
+    responseFileTarget,
 } from '../src/manifest-project';
 
 // child_process.execFile and spawnSync are non-configurable in modern Node,
@@ -55,35 +56,57 @@ describe('manifest projects', () => {
         });
     });
 
-    describe('targetToAnalyse', () => {
+    describe('firstListedTarget', () => {
         it('is null when the manifest lists a single target', () => {
             writeFileSync(join(workspace, 'ghul-project.json'), '{ "targets": ["wasm"] }');
 
-            expect(targetToAnalyse(workspace)).toBeNull();
+            expect(firstListedTarget(workspace)).toBeNull();
         });
 
         it('is the first listed when the manifest lists several', () => {
             writeFileSync(join(workspace, 'ghul-project.json'), '{ "targets": ["wasm", "dotnet"] }');
 
-            expect(targetToAnalyse(workspace)).toBe('wasm');
+            expect(firstListedTarget(workspace)).toBe('wasm');
         });
 
         it('reads a manifest with comments and trailing commas', () => {
             writeFileSync(join(workspace, 'ghul-project.json'),
                 '{\n    // where it runs\n    "name": "a // b",\n    "targets": ["dotnet", "wasm",],\n}\n');
 
-            expect(targetToAnalyse(workspace)).toBe('dotnet');
+            expect(firstListedTarget(workspace)).toBe('dotnet');
         });
 
         it('is null when the manifest cannot be read', () => {
             writeFileSync(join(workspace, 'ghul-project.json'), '{ not json');
 
-            expect(targetToAnalyse(workspace)).toBeNull();
+            expect(firstListedTarget(workspace)).toBeNull();
+        });
+    });
+
+    describe('responseFileTarget', () => {
+        it('is the target the response file names', () => {
+            let response_file = join(workspace, 'project.rsp');
+
+            writeFileSync(response_file, '--target llvm\n--define llvm\n');
+
+            expect(responseFileTarget(response_file)).toBe('llvm');
+        });
+
+        it('is dotnet when the response file names none', () => {
+            let response_file = join(workspace, 'project.rsp');
+
+            writeFileSync(response_file, '--reference\nSystem.Runtime.dll\n');
+
+            expect(responseFileTarget(response_file)).toBe('dotnet');
+        });
+
+        it('is null when there is no response file', () => {
+            expect(responseFileTarget(join(workspace, 'missing.rsp'))).toBeNull();
         });
     });
 
     describe('generateManifestResponseFile', () => {
-        it('asks ghul for both files, naming the first target when there are several', async () => {
+        it('asks ghul for both files, leaving it to choose the target', async () => {
             writeFileSync(join(workspace, 'ghul-project.json'), '{ "targets": ["wasm", "dotnet"] }');
 
             let response_file = join(workspace, 'project.rsp');
@@ -97,6 +120,32 @@ describe('manifest projects', () => {
             await expect(generateManifestResponseFile(workspace, response_file, globs_file)).resolves.toBeNull();
 
             expect(execFileMock).toHaveBeenCalledWith(
+                'ghul',
+                ['project', 'response-file', '--output', response_file, '--source-globs', globs_file],
+                { cwd: workspace },
+                expect.any(Function)
+            );
+        });
+
+        it('names the first target to a ghul too old to choose between several', async () => {
+            writeFileSync(join(workspace, 'ghul-project.json'), '{ "targets": ["wasm", "dotnet"] }');
+
+            let response_file = join(workspace, 'project.rsp');
+            let globs_file = join(workspace, 'source-globs.txt');
+
+            execFileMock.mockImplementation((_command, args: string[], _options, callback) => {
+                if (!args.includes('--target')) {
+                    callback(new Error('exit 1'), '', 'ghul: the manifest lists more than one target; name one with --target: wasm, dotnet\n');
+                    return;
+                }
+
+                writeFileSync(response_file, '--target wasm\n');
+                callback(null, '', '');
+            });
+
+            await expect(generateManifestResponseFile(workspace, response_file, globs_file)).resolves.toBeNull();
+
+            expect(execFileMock).toHaveBeenLastCalledWith(
                 'ghul',
                 ['project', 'response-file', '--output', response_file, '--source-globs', globs_file, '--target', 'wasm'],
                 { cwd: workspace },
