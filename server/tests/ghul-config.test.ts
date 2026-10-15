@@ -86,7 +86,7 @@ describe('getGhulConfig', () => {
 
         const cfg = getGhulConfig(workspace);
         // -A is appended last; other_flags come before:
-        expect(cfg.arguments).toEqual(['--flag-one', '--flag-two=value', '-A']);
+        expect(cfg.arguments).toEqual(['--flag-one', '--flag-two=value', '-A', '--incremental-analysis']);
     });
 
     it('expands directory-only source entries into glob patterns when a .ghulproj is present', () => {
@@ -190,8 +190,10 @@ describe('getGhulConfig', () => {
         expect(cfg.arguments).toEqual([
             '-a', a,
             '-a', b,
-            '-A',
-        ]);
+            
+'-A',
+                '--incremental-analysis',
+            ]);
         expect(cfg.missing_assemblies).toEqual([]);
     });
 
@@ -212,7 +214,7 @@ describe('getGhulConfig', () => {
         writeJson(workspace, '.assemblies.json', { assemblies: [present, absent] });
 
         const cfg = getGhulConfig(workspace);
-        expect(cfg.arguments).toEqual(['-a', present, '-A']);
+        expect(cfg.arguments).toEqual(['-a', present, '-A', '--incremental-analysis']);
         expect(cfg.missing_assemblies).toEqual([absent]);
     });
 
@@ -229,7 +231,7 @@ describe('getGhulConfig', () => {
         // No .assemblies.json on disk.
 
         const cfg = getGhulConfig(workspace);
-        expect(cfg.arguments).toEqual(['-A']);
+        expect(cfg.arguments).toEqual(['-A', '--incremental-analysis']);
     });
 
     describe('the source globs the build publishes', () => {
@@ -380,7 +382,7 @@ describe('getGhulConfig', () => {
         // <GhulOptions> land additively on `arguments` (ahead of -A); the
         // Condition-guarded --define release is skipped.
         expect(cfg.compiler).toEqual(['ghul-compiler', '--underscore-access', 'legacy']);
-        expect(cfg.arguments).toEqual(['--warn-as-hint', 'presence-test-non-optional', '-A']);
+        expect(cfg.arguments).toEqual(['--warn-as-hint', 'presence-test-non-optional', '-A', '--incremental-analysis']);
     });
 
     it('reads flags from .ghul-options.json and skips the <GhulOptions> XML fallback', () => {
@@ -405,6 +407,7 @@ describe('getGhulConfig', () => {
             '--underscore-access', 'legacy',
             '--suppress', 'null-deref,impure-function-value',
             '-A',
+            '--incremental-analysis',
         ]);
         expect(cfg.arguments).not.toContain('--should-be-ignored');
     });
@@ -423,7 +426,7 @@ describe('getGhulConfig', () => {
         // GenerateGhulOptionsJson (< 14.1.0).
 
         const cfg = getGhulConfig(workspace);
-        expect(cfg.arguments).toEqual(['--warn-as-hint', 'presence-test-non-optional', '-A']);
+        expect(cfg.arguments).toEqual(['--warn-as-hint', 'presence-test-non-optional', '-A', '--incremental-analysis']);
     });
 
     it('records a problem for malformed .ghul-options.json instead of throwing', () => {
@@ -538,6 +541,7 @@ describe('getGhulConfig', () => {
                 '-a', a,
                 '-a', b,
                 '-A',
+                '--incremental-analysis',
             ]);
             expect(cfg.missing_assemblies).toEqual([]);
         });
@@ -560,7 +564,7 @@ describe('getGhulConfig', () => {
 
             const cfg = getGhulConfig(workspace, {}, response_file);
 
-            expect(cfg.arguments).toEqual(['-a', present, '-A']);
+            expect(cfg.arguments).toEqual(['-a', present, '-A', '--incremental-analysis']);
             expect(cfg.missing_assemblies).toEqual([absent]);
         });
 
@@ -582,7 +586,7 @@ describe('getGhulConfig', () => {
 
             const cfg = getGhulConfig(workspace, {}, response_file);
 
-            expect(cfg.arguments).toEqual(['-a', from_response_file, '-A']);
+            expect(cfg.arguments).toEqual(['-a', from_response_file, '-A', '--incremental-analysis']);
         });
 
         // A runtime older than 14.3.0 has no target to write one, and the
@@ -599,7 +603,7 @@ describe('getGhulConfig', () => {
 
             const cfg = getGhulConfig(workspace, {}, join(workspace, 'never-written.rsp'));
 
-            expect(cfg.arguments).toEqual(['-a', a, '-A']);
+            expect(cfg.arguments).toEqual(['-a', a, '-A', '--incremental-analysis']);
         });
     });
 });
@@ -629,9 +633,9 @@ describe('getGhulConfig editor settings', () => {
         writeFileSync(path.join(workspace, 'ghul.json'), JSON.stringify(contents));
     }
 
-    it('is off when nobody has asked for it', () => {
-        expect(getGhulConfig(workspace).incremental_analysis).toBe(false);
-        expect(getGhulConfig(workspace).arguments).not.toContain('--incremental-analysis');
+    it('is on when nobody has asked for it', () => {
+        expect(getGhulConfig(workspace).incremental_analysis).toBe(true);
+        expect(getGhulConfig(workspace).arguments).toContain('--incremental-analysis');
     });
 
     it('takes the editor setting when one is expressed', () => {
@@ -639,6 +643,13 @@ describe('getGhulConfig editor settings', () => {
 
         expect(cfg.incremental_analysis).toBe(true);
         expect(cfg.arguments).toContain('--incremental-analysis');
+    });
+
+    it('lets the editor setting turn the default off for real', () => {
+        const cfg = getGhulConfig(workspace, { incremental_analysis: false });
+
+        expect(cfg.incremental_analysis).toBe(false);
+        expect(cfg.arguments).toContain('--no-incremental-analysis');
     });
 
     it('falls back to ghul.json when the user has expressed no preference', () => {

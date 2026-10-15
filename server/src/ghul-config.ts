@@ -113,8 +113,8 @@ export interface EditorSettings {
 // for them, so a project that already sets one keeps working, but it is the
 // weaker voice and the project file is the right home for anything that
 // genuinely changes the build.
-function prefer(setting: boolean | null | undefined, from_json: boolean | undefined): boolean {
-	return setting ?? from_json ?? false;
+function prefer(setting: boolean | null | undefined, from_json: boolean | undefined, when_unset: boolean): boolean {
+	return setting ?? from_json ?? when_unset;
 }
 
 // One line of the build's response file, tokenized. A line is one flag with
@@ -533,10 +533,12 @@ export function getGhulConfig(
 
 	args.push("-A");
 
-	let incremental_analysis = prefer(settings.incremental_analysis, config.incremental_analysis);
+	let incremental_analysis = prefer(settings.incremental_analysis, config.incremental_analysis, true);
 
 	if (incremental_analysis) {
 		args.push("--incremental-analysis");
+	} else {
+		args.push("--no-incremental-analysis");
 	}
 
 	// Inlay-kind settings are editor-only: unset defers to the compiler's
@@ -577,7 +579,7 @@ export function getGhulConfig(
 		source,
 		exclude,
 		arguments: args,
-		want_plaintext_hover: prefer(settings.want_plaintext_hover, config.want_plaintext_hover),
+		want_plaintext_hover: prefer(settings.want_plaintext_hover, config.want_plaintext_hover, false),
 		incremental_analysis,
 		missing_assemblies,
 		problems

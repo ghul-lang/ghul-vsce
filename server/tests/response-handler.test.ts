@@ -191,19 +191,19 @@ describe('ResponseHandler', () => {
         it('warns when the setting is on but capability is absent', () => {
             responseHandler.incremental_analysis_requested = true;
             responseHandler.handleListen({ capabilities: [] });
-            expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('incremental_analysis'));
+            expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('incremental analysis'));
         });
 
         it('warns when the setting is on and the listen frame has no capabilities field at all', () => {
             responseHandler.incremental_analysis_requested = true;
             responseHandler.handleListen({});
-            expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('incremental_analysis'));
+            expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('incremental analysis'));
         });
 
         it('does not warn when the setting is on and capability is advertised', () => {
             responseHandler.incremental_analysis_requested = true;
             responseHandler.handleListen({ capabilities: ['incremental-analysis'] });
-            expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('incremental_analysis'));
+            expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('incremental analysis'));
         });
 
         it('records the code-actions capability when the compiler advertises it', () => {
@@ -220,7 +220,7 @@ describe('ResponseHandler', () => {
         it('does not warn when the setting is off, even if capability is absent', () => {
             responseHandler.incremental_analysis_requested = false;
             responseHandler.handleListen({ capabilities: [] });
-            expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('incremental_analysis'));
+            expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('incremental analysis'));
         });
     });
 
