@@ -690,7 +690,7 @@ export class ResponseHandler {
             !capabilities.includes("incremental-analysis")
         ) {
             log(
-                "ghul.json sets incremental_analysis but the spawned " +
+                "incremental analysis is requested but the spawned " +
                 "compiler does not advertise it — running with the " +
                 "feature disabled. Upgrade ghul.compiler to use it."
             );

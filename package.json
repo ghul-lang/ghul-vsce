@@ -51,7 +51,7 @@
           ],
           "default": null,
           "scope": "resource",
-          "markdownDescription": "Reuse the analyser’s existing state across an edit instead of rebuilding the whole project for each one. Much faster on a large project, at the cost of some answers being briefly out of date after an edit that changes a declaration. Unset defers to `incremental_analysis` in `ghul.json`, and is otherwise off."
+          "markdownDescription": "Reuse the analyser’s existing state across an edit instead of rebuilding the whole project for each one. Much faster on a large project, at the cost of some answers being briefly out of date after an edit that changes a declaration. Unset defers to `incremental_analysis` in `ghul.json`, and is otherwise on."
         },
         "ghul.plaintextHover": {
           "type": [
