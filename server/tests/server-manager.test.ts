@@ -431,6 +431,37 @@ describe('ServerManager (state helpers)', () => {
                 .toContain('no usable ghūl compiler found');
         });
 
+        it('reports the manifest problem as the reason, and only once across retries', () => {
+            manager.ghul_config = {
+                ...baseConfig,
+                compiler: undefined as unknown as string[],
+                problems: ['could not write the response file for ghul-project.json: ghul: unknown target fortran'],
+            };
+
+            manager.start();
+            manager.start();
+
+            expect(connection.window.showErrorMessage).toHaveBeenCalledTimes(1);
+
+            const message = (connection.window.showErrorMessage as jest.Mock).mock.calls[0][0] as string;
+
+            expect(message).toContain('unknown target fortran');
+            expect(message).not.toContain('no ghūl compiler could be found');
+        });
+
+        it('says no compiler could be found when nothing explains why', () => {
+            manager.ghul_config = {
+                ...baseConfig,
+                compiler: undefined as unknown as string[],
+                problems: [],
+            };
+
+            manager.start();
+
+            expect((connection.window.showErrorMessage as jest.Mock).mock.calls[0][0])
+                .toContain('no ghūl compiler could be found');
+        });
+
         it('on unexpected exit, resets edit queue and respawns after back-off', () => {
             const resetSpy = jest.fn();
             manager.edit_queue = { reset: resetSpy } as unknown as EditQueue;

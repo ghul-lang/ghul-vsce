@@ -78,6 +78,10 @@ export class ServerManager {
 	watchdog: Watchdog;
 
 	restart_attempts: number;
+
+	// The last failure shown, so the same one is not raised again.
+	private last_failure: string | null = null;
+
 	restart_timer: NodeJS.Timeout;
 
 	constructor(
@@ -229,11 +233,13 @@ export class ServerManager {
 		// resolved — spawning undefined would just throw. Surface the reason
 		// and wait for a corrected configuration.
 		if (!ghul_compiler || ghul_compiler.length == 0) {
+			// The problems say why, a manifest ghul could not read among
+			// them; the generic advice is only for when nothing does.
 			this.fail(
-				"ghūl language extension: no ghūl compiler could be found. " +
+				"ghūl language extension: " +
 				(this.ghul_config.problems?.length
 					? this.ghul_config.problems.join("; ")
-					: "Install the ghul.compiler tool or set 'compiler' in ghul.json.")
+					: "no ghūl compiler could be found. Install the ghul.compiler tool or set 'compiler' in ghul.json.")
 			);
 			return;
 		}
@@ -430,6 +436,14 @@ export class ServerManager {
 
 		log(message);
 
+		// Each new configuration retries, and one that fails for the same
+		// reason would otherwise raise the same error again.
+		if (message === this.last_failure) {
+			return;
+		}
+
+		this.last_failure = message;
+
 		this.connection?.window?.showErrorMessage(message);
 	}
 
@@ -445,6 +459,7 @@ export class ServerManager {
 		// The compiler came up cleanly: a later crash gets a fresh retry
 		// budget rather than counting against this successful run.
 		this.restart_attempts = 0;
+		this.last_failure = null;
 
 		this.server_state = ServerState.Listening;
 

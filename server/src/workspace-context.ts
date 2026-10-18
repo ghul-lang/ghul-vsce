@@ -327,18 +327,26 @@ export class WorkspaceContext {
         // compiler, so none of the .NET steps apply to it.
         let manifest_compiler: string[] | null | undefined = undefined;
 
+        // What ghul said was wrong with the manifest. It is why there is no
+        // compiler to start, so it travels with the configuration for the
+        // server manager to report in place of a generic complaint.
+        let manifest_problems: string[] = [];
+
         if (isManifestProject(this.workspace_root)) {
             this.progress.report(Activity.Setup, "resolving compiler options", { done_message: "compiler options resolved" });
 
             let manifest_problem = await generateManifestResponseFile(this.workspace_root, response_file, source_globs_file);
             if (manifest_problem) {
-                problems.push(manifest_problem);
+                manifest_problems.push(manifest_problem);
                 response_file = null;
             }
 
             let found = manifestCompiler(this.workspace_root);
-            if (found.problem) {
-                problems.push(found.problem);
+
+            // A manifest ghul could not read fails both requests the same
+            // way, so the second report would only repeat the first.
+            if (found.problem && !manifest_problem) {
+                manifest_problems.push(found.problem);
             }
 
             manifest_compiler = found.compiler ?? null;
@@ -351,6 +359,11 @@ export class WorkspaceContext {
         this.config = manifest_compiler === undefined
             ? getGhulConfig(this.workspace_root, settings, response_file, source_globs_file)
             : getGhulConfig(this.workspace_root, settings, response_file, source_globs_file, manifest_compiler);
+
+        if (manifest_problems.length) {
+            this.config.problems = [...manifest_problems, ...(this.config.problems ?? [])];
+        }
+
         problems.push(...(this.config.problems ?? []));
 
         // The step above builds the referenced projects, so anything still
