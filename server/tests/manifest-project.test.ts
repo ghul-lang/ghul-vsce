@@ -7,6 +7,7 @@ import {
     generateManifestResponseFile,
     isManifestProject,
     manifestCompiler,
+    compilerArgv,
     firstListedTarget,
     responseFileTarget,
 } from '../src/manifest-project';
@@ -189,6 +190,32 @@ describe('manifest projects', () => {
             spawnSyncMock.mockReturnValue({ status: null, stdout: '', stderr: '', error: Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) });
 
             expect(manifestCompiler(workspace).problem).toContain('the ghul command-line tool is needed');
+        });
+
+        it('takes the command as the JSON array --json prints', () => {
+            spawnSyncMock.mockReturnValue({ status: 0, stdout: '["/usr/bin/node","C:\\\\ghul\\\\ghul.mjs"]\n', stderr: '' });
+
+            expect(manifestCompiler(workspace)).toEqual({ compiler: ['/usr/bin/node', 'C:\\ghul\\ghul.mjs'] });
+            expect(spawnSyncMock).toHaveBeenCalledTimes(1);
+            expect(spawnSyncMock.mock.calls[0][1]).toEqual(['project', 'compiler', '--json']);
+        });
+
+        it('asks again without --json when ghul refuses it', () => {
+            spawnSyncMock
+                .mockReturnValueOnce({ status: 1, stdout: '', stderr: 'ghul: unexpected argument --json\n' })
+                .mockReturnValueOnce({ status: 0, stdout: 'dotnet /opt/ghul.dll\n', stderr: '' });
+
+            expect(manifestCompiler(workspace)).toEqual({ compiler: ['dotnet', '/opt/ghul.dll'] });
+            expect(spawnSyncMock.mock.calls[1][1]).toEqual(['project', 'compiler']);
+        });
+    });
+
+    describe('compilerArgv', () => {
+        it('is undefined for output that is not a JSON array of strings', () => {
+            expect(compilerArgv('dotnet ghul.dll\n')).toBeUndefined();
+            expect(compilerArgv('[]')).toBeUndefined();
+            expect(compilerArgv('[1, 2]')).toBeUndefined();
+            expect(compilerArgv('')).toBeUndefined();
         });
     });
 });
