@@ -168,6 +168,20 @@ export function generateManifestResponseFile(
 // setup rather than kept: with no compiler named in the manifest it is the
 // newest installed, so it can change when a compiler is installed.
 export function manifestCompiler(workspace: string): { compiler?: string[], problem?: string } {
+    let listed = spawnSync(COMMAND, ['project', 'compiler', '--json'], { encoding: 'utf-8', cwd: workspace });
+
+    if (!listed.error && listed.status === 0) {
+        let argv = compilerArgv(listed.stdout);
+
+        if (argv) {
+            log(`will use compiler ${JSON.stringify(argv)} named by ${COMMAND}`);
+
+            return { compiler: argv };
+        }
+    }
+
+    // A ghul command-line tool from before --json refuses the option and
+    // prints the command as one shell-quoted line.
     let result = spawnSync(COMMAND, ['project', 'compiler'], { encoding: 'utf-8', cwd: workspace });
 
     if (result.error || result.status !== 0) {
@@ -185,4 +199,26 @@ export function manifestCompiler(workspace: string): { compiler?: string[], prob
     log(`will use compiler '${line.trim()}' named by ${COMMAND}`);
 
     return { compiler };
+}
+
+// The program and its arguments from the JSON array `ghul project compiler
+// --json` prints, or undefined where the output is not one.
+export function compilerArgv(output: string): string[] | undefined {
+    let line = output.split(/\r?\n/).find(l => l.trim().length > 0);
+
+    if (!line) {
+        return undefined;
+    }
+
+    try {
+        let parsed: unknown = JSON.parse(line);
+
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(p => typeof p === 'string')) {
+            return parsed as string[];
+        }
+    } catch {
+        return undefined;
+    }
+
+    return undefined;
 }
