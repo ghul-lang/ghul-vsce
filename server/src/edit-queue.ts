@@ -91,6 +91,45 @@ export class EditQueue {
 
     state: QueueState;
 
+    // Queries held while a compile is in flight against an analyser that
+    // cannot answer mid-compile (no mid-compile-queries capability). The
+    // requester hands queries to whenNotCompiling, and these resolve the
+    // moment the compile they would have parked behind ends.
+    private compile_done_waiters: (() => void)[] = [];
+
+    // Whether a compile the analyser is working through is in flight: the
+    // states in which the analyser is computing rather than reading its
+    // input.
+    isCompiling(): boolean {
+        return this.state === QueueState.DOING_PARTIAL_COMPILE
+            || this.state === QueueState.DOING_FULL_COMPILE
+            || this.state === QueueState.DOING_FULL_COMPILE_SUPERSEDED;
+    }
+
+    // Resolves once no compile is in flight — immediately when none is.
+    // The requester holds queries here against an analyser that cannot
+    // answer mid-compile, so a query's round trip starts when it can be
+    // answered rather than parking in the analyser's input for the length
+    // of the compile.
+    whenNotCompiling(): Promise<void> {
+        if (!this.isCompiling()) {
+            return Promise.resolve();
+        }
+
+        return new Promise(resolve => {
+            this.compile_done_waiters.push(resolve);
+        });
+    }
+
+    private releaseCompileDoneWaiters() {
+        const waiters = this.compile_done_waiters;
+        this.compile_done_waiters = [];
+
+        for (const waiter of waiters) {
+            waiter();
+        }
+    }
+
     static readonly FULL_BUILD_EDIT_TIMEOUT = 1000;
     static readonly PARTIAL_BUILD_EDIT_TIMEOUT = 100;
 
@@ -191,6 +230,10 @@ export class EditQueue {
         for (const waiter of waiters) {
             waiter();
         }
+
+        // A restart abandons whatever compile was in flight; held queries
+        // must not wait on one that will never report its completion.
+        this.releaseCompileDoneWaiters();
 
         this.state = QueueState.IDLE;
     }
@@ -317,6 +360,8 @@ export class EditQueue {
             return;
         }
 
+        this.releaseCompileDoneWaiters();
+
         // The analyser has compiled the project at least once, so queries
         // can now be answered against real state.
         this.requester.analysed = true;
@@ -375,6 +420,8 @@ export class EditQueue {
             log("edit queue: on full compile done: unexpected queue state: " + QueueState[this.state]);
             return;
         }
+
+        this.releaseCompileDoneWaiters();
 
         this.requester.analysed = true;
 

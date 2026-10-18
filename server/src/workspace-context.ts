@@ -138,6 +138,12 @@ export class WorkspaceContext {
             () => this.server_manager?.ensureRunning()
         );
 
+        // Late-bound like the ensure_running hook above: the queue is built
+        // after the requester. Queries hold on it only while the analyser
+        // cannot answer mid-compile.
+        this.requester.wait_for_quiet = () => this.edit_queue?.whenNotCompiling() ?? Promise.resolve();
+        this.requester.quiet_now = () => this.edit_queue?.isCompiling() !== true;
+
         this.edit_queue = new EditQueue(
             this.requester,
             this.response_handler,
