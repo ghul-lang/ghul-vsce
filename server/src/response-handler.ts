@@ -538,6 +538,14 @@ export class ResponseHandler {
     // and holds nothing back to shorten the next compile.
     compile_abort_supported: boolean = false;
 
+    // Set from the analyser's advertised capabilities on LISTEN. A query
+    // sent while a compile is running is answered during the compile only
+    // where this is advertised; elsewhere it sits in the analyser's input
+    // until the compile ends, and holding it client-side until then keeps
+    // its round trip short instead of parking it in the analyser's input
+    // queue for the length of the compile.
+    mid_compile_queries_supported: boolean = false;
+
     // Set from the client's declared capabilities. See ExtensionState: without
     // it the client is never asked to re-fetch the views below, and a stale
     // answer stays on screen until the document is edited again.
@@ -715,6 +723,8 @@ export class ResponseHandler {
         this.edit_deltas_supported = capabilities.includes("edit-deltas");
 
         this.compile_abort_supported = capabilities.includes("compile-abort");
+
+        this.mid_compile_queries_supported = capabilities.includes("mid-compile-queries");
 
         this.add_references_supported = capabilities.includes("add-references");
 

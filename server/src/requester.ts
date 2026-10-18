@@ -69,6 +69,14 @@ export class Requester {
     // nothing unless the compiler is actually away.
     ensure_running: () => void;
 
+    // Resolves once the edit queue has no compile in flight; late-bound like
+    // ensure_running because the queue is built after this requester. Set
+    // only where the analyser cannot answer mid-compile (see whenAnalysed).
+    // quiet_now answers synchronously so the common case - no compile in
+    // flight - keeps send() on the caller's tick.
+    wait_for_quiet: () => Promise<void> = () => Promise.resolve();
+    quiet_now: () => boolean = () => true;
+
     watchdog_timer: NodeJS.Timer;
 
     constructor(
@@ -129,7 +137,16 @@ export class Requester {
         if (this.analysed) {
             this.watchdog.startWatchdogIfNotRunning();
 
-            return send();
+            // An analyser that has not advertised mid-compile-queries
+            // answers a query sent during a compile only once that compile
+            // ends. Holding the query here keeps its own round trip short
+            // — and out of the analyser's input queue — instead of sending
+            // it into a wait the compile's length decides.
+            if (this.response_handler.mid_compile_queries_supported || this.quiet_now()) {
+                return send();
+            }
+
+            return this.wait_for_quiet().then(send);
         }
 
         return new Promise<T>(resolve => {
@@ -164,7 +181,13 @@ export class Requester {
 
                 this.watchdog.startWatchdogIfNotRunning();
 
-                resolve(send());
+                if (this.response_handler.mid_compile_queries_supported || this.quiet_now()) {
+                    resolve(send());
+
+                    return;
+                }
+
+                this.wait_for_quiet().then(() => resolve(send()));
             };
 
             this.analysed_waiters.push(waiter);

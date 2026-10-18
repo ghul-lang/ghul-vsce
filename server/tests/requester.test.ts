@@ -40,6 +40,7 @@ class RecordingResponseHandler {
 
     code_actions_supported: boolean = true;
     add_references_supported: boolean = true;
+    mid_compile_queries_supported: boolean = true;
 }
 
 function makeRunningChild(stream: CapturingStream): ChildProcess {
@@ -208,6 +209,33 @@ describe('Requester', () => {
         });
         expect(response.expectations).toEqual(['hover']);
         await promise;
+    });
+
+    it('holds a query until no compile is in flight when the analyser cannot answer mid-compile', async () => {
+        response.mid_compile_queries_supported = false;
+        requester.quiet_now = () => false;
+
+        let released = false;
+        requester.wait_for_quiet = () => new Promise(resolve => {
+            // release on the next tick, after the assertion below has read
+            // the still-empty stream
+            setTimeout(() => { released = true; resolve(); }, 5);
+        });
+
+        const promise = requester.sendHover('file:///x.ghul', 0, 5);
+
+        expect(stream.written.length).toBe(0);
+        expect(released).toBe(false);
+
+        await promise;
+
+        expect(released).toBe(true);
+        expect(parseOnlyRequest(stream)).toEqual({
+            kind: 'hover',
+            path: 'file:///x.ghul',
+            line: 1,
+            column: 6,
+        });
     });
 
     it.each([

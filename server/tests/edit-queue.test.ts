@@ -152,6 +152,33 @@ describe('EditQueue', () => {
     });
 
     describe('onPartialCompileDone', () => {
+        it('releases a query held while the first compile ends, not a compile later', async () => {
+            queue.reset();
+            queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+
+            // The requester's analysed setter releases the queries that
+            // arrived before the first compile finished, and each of them,
+            // against an analyser that cannot answer mid-compile, asks the
+            // queue to wait out the compile. That ask happens inside the
+            // setter, while the queue is still on its way out of the
+            // compile state.
+            let late_waiter: Promise<void> | null = null;
+
+            Object.defineProperty(recorder, 'analysed', {
+                set: () => { late_waiter = queue.whenNotCompiling(); },
+                get: () => false,
+                configurable: true,
+            });
+
+            queue.onPartialCompileDone(50);
+
+            expect(late_waiter).not.toBeNull();
+
+            // Resolves with the compile that just ended; before the fix it
+            // sat in the waiter list until some later compile finished.
+            await late_waiter;
+        });
+
         it('moves to WAITING_FOR_MORE_EDITS_AFTER_PARTIAL_COMPILE when nothing is pending', () => {
             queue.reset();
             queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
