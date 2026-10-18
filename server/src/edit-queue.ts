@@ -360,8 +360,6 @@ export class EditQueue {
             return;
         }
 
-        this.releaseCompileDoneWaiters();
-
         // The analyser has compiled the project at least once, so queries
         // can now be answered against real state.
         this.requester.analysed = true;
@@ -399,6 +397,12 @@ export class EditQueue {
         }
 
         this.releaseFlushedWaiters();
+
+        // Held queries go out after the state has moved off the compile,
+        // so a query released by `analysed` above reads no compile as in
+        // flight and sends rather than waiting for a compile that has
+        // already ended.
+        this.releaseCompileDoneWaiters();
     }
 
     onFullCompileDone(milliseconds: number) {
@@ -420,8 +424,6 @@ export class EditQueue {
             log("edit queue: on full compile done: unexpected queue state: " + QueueState[this.state]);
             return;
         }
-
-        this.releaseCompileDoneWaiters();
 
         this.requester.analysed = true;
 
@@ -455,6 +457,10 @@ export class EditQueue {
         }
 
         this.releaseFlushedWaiters();
+
+        // Held queries go out after the state has moved off the compile,
+        // for the same reason as in onPartialCompileDone.
+        this.releaseCompileDoneWaiters();
     }
 
     onHeapCheckDone() {
