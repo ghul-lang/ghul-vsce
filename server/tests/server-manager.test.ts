@@ -150,12 +150,33 @@ describe('ServerManager (state helpers)', () => {
             serverEvents.onKilling(killingHandler);
             serverEvents.on('aborted', rawAbortHandler);
 
-            // No this.child — child.kill() throws TypeError → catch → abort()
+            manager.child = { kill: jest.fn(() => { throw new Error('EPERM'); }) } as any;
+
             manager.kill();
 
             expect(killingHandler).toHaveBeenCalled();
             expect(rawAbortHandler).toHaveBeenCalled();
             expect(manager.state()).toBe(ServerState.Aborted);
+        });
+
+        it('has nothing to kill, and does not abort, when no compiler was ever started', () => {
+            const killing = jest.fn();
+            const killed = jest.fn();
+            const rawAbortHandler = jest.fn();
+            serverEvents.onKilling(killing);
+            serverEvents.onKilled(killed);
+            serverEvents.on('aborted', rawAbortHandler);
+
+            manager.child = undefined as any;
+
+            manager.kill();
+
+            expect(killing).toHaveBeenCalled();
+            expect(killed).toHaveBeenCalled();
+            expect(rawAbortHandler).not.toHaveBeenCalled();
+            expect(manager.state()).not.toBe(ServerState.Aborted);
+            // No exit is coming, so a later crash is not mistaken for this one.
+            expect(manager.expecting_exit).toBeFalsy();
         });
 
         it('completes the happy path when child.kill() succeeds', () => {

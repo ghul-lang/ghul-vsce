@@ -484,8 +484,13 @@ export class ServerManager {
 		this.clearRestartTimer();
 
 		try {
-			this.expecting_exit = true;
-			this.child.kill();
+			// No compiler has been started, or the last one has gone: there is
+			// nothing to kill, and no exit to expect.
+			if (this.child) {
+				this.expecting_exit = true;
+				this.child.kill();
+			}
+
 			this.event_emitter.killed();
 			log("finished killing compiler");
 		} catch (e) {
