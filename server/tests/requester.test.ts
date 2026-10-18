@@ -53,7 +53,11 @@ function parseOnlyRequest(stream: CapturingStream): any {
     expect(stream.written.length).toBeGreaterThan(0);
     const line = stream.written[0];
     expect(line.endsWith('\n')).toBe(true);
-    return JSON.parse(line.slice(0, -1));
+    const request = JSON.parse(line.slice(0, -1));
+    // Every request carries its tag under both names; see `send`.
+    expect(request.command).toEqual(request.kind);
+    delete request.command;
+    return request;
 }
 
 describe('Requester', () => {
@@ -99,7 +103,7 @@ describe('Requester', () => {
         });
 
         expect(parseOnlyRequest(stream)).toEqual({
-            command: 'code_actions',
+            kind: 'code_actions',
             path: 'file:///x.ghul',
             start_line: 5,
             start_column: 1,
@@ -127,7 +131,7 @@ describe('Requester', () => {
     it('sendAddReferences writes the paths and answers with the analyser\'s reply', async () => {
         expect(await requester.sendAddReferences(['/cells/a.dll'])).toBeNull();
 
-        expect(parseOnlyRequest(stream)).toEqual({ command: 'add_references', paths: ['/cells/a.dll'] });
+        expect(parseOnlyRequest(stream)).toEqual({ kind: 'add_references', paths: ['/cells/a.dll'] });
     });
 
     it('sendAddReferences sends nothing to a compiler that does not advertise the capability', async () => {
@@ -144,7 +148,7 @@ describe('Requester', () => {
         stream.written = [];
         events.listening();
 
-        expect(parseOnlyRequest(stream)).toEqual({ command: 'add_references', paths: ['/cells/a.dll', '/cells/b.dll'] });
+        expect(parseOnlyRequest(stream)).toEqual({ kind: 'add_references', paths: ['/cells/a.dll', '/cells/b.dll'] });
     });
 
     it('does not remember references the analyser refused', async () => {
@@ -185,7 +189,7 @@ describe('Requester', () => {
         ]);
 
         expect(parseOnlyRequest(stream)).toEqual({
-            command: 'edit',
+            kind: 'edit',
             files: [
                 { path: 'file:///a.ghul', source: 'aaa' },
                 { path: 'file:///b.ghul', source: 'bbb' },
@@ -197,7 +201,7 @@ describe('Requester', () => {
         const promise = requester.sendHover('file:///x.ghul', 0, 5);
 
         expect(parseOnlyRequest(stream)).toEqual({
-            command: 'hover',
+            kind: 'hover',
             path: 'file:///x.ghul',
             line: 1,        // 0-based 0 → 1-based 1
             column: 6,      // 0-based 5 → 1-based 6
@@ -217,7 +221,7 @@ describe('Requester', () => {
         await (requester as any)[method]('file:///x.ghul', 2, 3);
 
         expect(parseOnlyRequest(stream)).toEqual({
-            command,
+            kind: command,
             path: 'file:///x.ghul',
             line: 3,
             column: 4,
@@ -235,7 +239,7 @@ describe('Requester', () => {
         await requester.sendCompletion('file:///x.ghul', 2, 3, is_member_trigger);
 
         expect(parseOnlyRequest(stream)).toEqual({
-            command: 'complete',
+            kind: 'complete',
             path: 'file:///x.ghul',
             line: 3,
             column: 4,
@@ -248,7 +252,7 @@ describe('Requester', () => {
         await requester.sendDocumentSymbol('file:///x.ghul');
 
         expect(parseOnlyRequest(stream)).toEqual({
-            command: 'symbols',
+            kind: 'symbols',
             path: 'file:///x.ghul',
         });
         expect(response.expectations).toEqual(['symbols']);
@@ -258,7 +262,7 @@ describe('Requester', () => {
         await requester.sendWorkspaceSymbol();
 
         expect(parseOnlyRequest(stream)).toEqual({
-            command: 'symbols',
+            kind: 'symbols',
             path: '',
         });
         expect(response.expectations).toEqual(['symbols']);
@@ -268,7 +272,7 @@ describe('Requester', () => {
         await requester.sendSemanticTokens('file:///x.ghul');
 
         expect(parseOnlyRequest(stream)).toEqual({
-            command: 'semantic_tokens',
+            kind: 'semantic_tokens',
             path: 'file:///x.ghul',
         });
         expect(response.expectations).toEqual(['semantic_tokens']);
@@ -278,7 +282,7 @@ describe('Requester', () => {
         await requester.sendRenameRequest('file:///x.ghul', 1, 2, 'newName');
 
         expect(parseOnlyRequest(stream)).toEqual({
-            command: 'rename',
+            kind: 'rename',
             path: 'file:///x.ghul',
             line: 2,
             column: 3,
@@ -290,19 +294,19 @@ describe('Requester', () => {
     it('sendFullCompileRequest writes a bare compile JSON line', () => {
         requester.sendFullCompileRequest();
 
-        expect(parseOnlyRequest(stream)).toEqual({ command: 'compile' });
+        expect(parseOnlyRequest(stream)).toEqual({ kind: 'compile' });
     });
 
     it('sendRestart writes a bare restart JSON line', () => {
         requester.sendRestart();
 
-        expect(parseOnlyRequest(stream)).toEqual({ command: 'restart' });
+        expect(parseOnlyRequest(stream)).toEqual({ kind: 'restart' });
     });
 
     it('sendHeapCheckRequest writes a bare heap_check JSON line', () => {
         requester.sendHeapCheckRequest();
 
-        expect(parseOnlyRequest(stream)).toEqual({ command: 'heap_check' });
+        expect(parseOnlyRequest(stream)).toEqual({ kind: 'heap_check' });
     });
 
     describe('queries arriving before the analyser is ready', () => {
@@ -347,7 +351,7 @@ describe('Requester', () => {
 
             await hover;
 
-            expect(parseOnlyRequest(stream).command).toEqual('hover');
+            expect(parseOnlyRequest(stream).kind).toEqual('hover');
         });
 
         it('keeps each held send adjacent to its own expectation', async () => {
@@ -361,7 +365,7 @@ describe('Requester', () => {
 
             await Promise.all(queries);
 
-            expect(stream.written.map(line => JSON.parse(line.slice(0, -1)).command))
+            expect(stream.written.map(line => JSON.parse(line.slice(0, -1)).kind))
                 .toEqual(['hover', 'definition', 'complete']);
             expect(response.expectations).toEqual(['hover', 'definition', 'completion']);
         });
@@ -407,7 +411,7 @@ describe('Requester', () => {
 
             await kept;
 
-            expect(stream.written.map(line => JSON.parse(line.slice(0, -1)).command))
+            expect(stream.written.map(line => JSON.parse(line.slice(0, -1)).kind))
                 .toEqual(['definition']);
         });
     });

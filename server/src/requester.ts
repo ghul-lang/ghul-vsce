@@ -95,7 +95,7 @@ export class Requester {
 
         server_event_emitter.onListening(() => {
             if (this.added_references.length > 0 && this.response_handler.add_references_supported) {
-                this.send({ command: "add_references", paths: this.added_references });
+                this.send({ kind: "add_references", paths: this.added_references });
 
                 this.response_handler.expectAddReferences()
                     .then(message => { if (message) log(`could not add references again: ${message}`); })
@@ -209,8 +209,11 @@ export class Requester {
 
     // Serialize one request object to a single JSONL line (newline-terminated).
     // JSON escapes any embedded newlines, so one line is always one message.
-    send(request: object) {
-        this.write(JSON.stringify(request) + '\n');
+    // The request is tagged under `kind`; analysers before 66.0.0 read the
+    // tag from `command` instead, so it is written under both, and each
+    // analyser ignores the field it does not read.
+    send(request: { kind: string, [field: string]: unknown }) {
+        this.write(JSON.stringify({ ...request, command: request.kind }) + '\n');
     }
 
     sendDocuments(documents: { uri: string, source: string }[]) {
@@ -223,7 +226,7 @@ export class Requester {
         this.watchdog.startWatchdogIfNotRunning();
 
         this.send({
-            command: "edit",
+            kind: "edit",
             files: documents.map(({ uri, source }) => ({
                 path: normalizeFileUri(uri),
                 source: source
@@ -237,7 +240,7 @@ export class Requester {
         this.watchdog.startWatchdogIfNotRunning();
 
         this.send({
-            command: "edit_delta",
+            kind: "edit_delta",
             files: deltas
         });
     }
@@ -253,7 +256,7 @@ export class Requester {
         }
 
         this.send({
-            command: "set_open_files",
+            kind: "set_open_files",
             paths: uris.map(uri => normalizeFileUri(uri))
         });
     }
@@ -270,7 +273,7 @@ export class Requester {
 
         return this.whenAnalysed(() => {
             this.send({
-                command: "code_actions",
+                kind: "code_actions",
                 path: normalizeFileUri(uri),
                 start_line: range.start.line + 1,
                 start_column: range.start.character + 1,
@@ -285,7 +288,7 @@ export class Requester {
     sendHover(uri: string, line: number, character: number, token?: CancellationToken): Promise<Hover> {
         return this.whenAnalysed(() => {
             this.send({
-                command: "hover",
+                kind: "hover",
                 path: normalizeFileUri(uri),
                 line: line + 1,
                 column: character + 1
@@ -298,7 +301,7 @@ export class Requester {
     sendDefinition(uri: string, line: number, character: number, token?: CancellationToken): Promise<Definition> {
         return this.whenAnalysed(() => {
             this.send({
-                command: "definition",
+                kind: "definition",
                 path: normalizeFileUri(uri),
                 line: line + 1,
                 column: character + 1
@@ -311,7 +314,7 @@ export class Requester {
     sendDeclaration(uri: string, line: number, character: number, token?: CancellationToken): Promise<Definition> {
         return this.whenAnalysed(() => {
             this.send({
-                command: "declaration",
+                kind: "declaration",
                 path: normalizeFileUri(uri),
                 line: line + 1,
                 column: character + 1
@@ -335,7 +338,7 @@ export class Requester {
     ): Promise<CompletionItem[]> {
         return this.whenAnalysed(() => {
             this.send({
-                command: "complete",
+                kind: "complete",
                 path: normalizeFileUri(uri),
                 line: line + 1,
                 column: character + 1,
@@ -349,7 +352,7 @@ export class Requester {
     sendSignature(uri: string, line: number, character: number, token?: CancellationToken): Promise<SignatureHelp> {
         return this.whenAnalysed(() => {
             this.send({
-                command: "signature",
+                kind: "signature",
                 path: normalizeFileUri(uri),
                 line: line + 1,
                 column: character + 1
@@ -362,7 +365,7 @@ export class Requester {
     sendDocumentSymbol(uri: string, token?: CancellationToken): Promise<SymbolInformation[]> {
         return this.whenAnalysed(() => {
             this.send({
-                command: "symbols",
+                kind: "symbols",
                 path: normalizeFileUri(uri)
             });
 
@@ -373,7 +376,7 @@ export class Requester {
     sendWorkspaceSymbol(token?: CancellationToken): Promise<SymbolInformation[]> {
         return this.whenAnalysed(() => {
             this.send({
-                command: "symbols",
+                kind: "symbols",
                 path: ""
             });
 
@@ -384,7 +387,7 @@ export class Requester {
     sendReferences(uri: string, line: number, character: number, token?: CancellationToken): Promise<Location[]> {
         return this.whenAnalysed(() => {
             this.send({
-                command: "references",
+                kind: "references",
                 path: normalizeFileUri(uri),
                 line: line + 1,
                 column: character + 1
@@ -397,7 +400,7 @@ export class Requester {
     sendImplementation(uri: string, line: number, character: number, token?: CancellationToken): Promise<Location[]> {
         return this.whenAnalysed(() => {
             this.send({
-                command: "implementation",
+                kind: "implementation",
                 path: normalizeFileUri(uri),
                 line: line + 1,
                 column: character + 1
@@ -410,7 +413,7 @@ export class Requester {
     sendTypeDefinition(uri: string, line: number, character: number, token?: CancellationToken): Promise<Definition> {
         return this.whenAnalysed(() => {
             this.send({
-                command: "type_definition",
+                kind: "type_definition",
                 path: normalizeFileUri(uri),
                 line: line + 1,
                 column: character + 1
@@ -423,7 +426,7 @@ export class Requester {
     sendRenameRequest(uri: string, line: number, character: number, newName: string): Promise<WorkspaceEdit> {
         return this.whenAnalysed(() => {
             this.send({
-                command: "rename",
+                kind: "rename",
                 path: normalizeFileUri(uri),
                 line: line + 1,
                 column: character + 1,
@@ -437,7 +440,7 @@ export class Requester {
     sendSemanticTokens(uri: string, token?: CancellationToken): Promise<SemanticTokens> {
         return this.whenAnalysed(() => {
             this.send({
-                command: "semantic_tokens",
+                kind: "semantic_tokens",
                 path: normalizeFileUri(uri)
             });
 
@@ -452,7 +455,7 @@ export class Requester {
             // pay transport and parsing for a whole file. 1-based, end
             // position exclusive, matching every other range on the wire.
             let request: any = {
-                command: "inlay_hints",
+                kind: "inlay_hints",
                 path: normalizeFileUri(uri)
             };
 
@@ -475,7 +478,7 @@ export class Requester {
     sendDocumentFormatting(uri: string, source: string, range: Range): Promise<TextEdit[]> {
         return this.whenAnalysed(() => {
             this.send({
-                command: "format",
+                kind: "format",
                 path: normalizeFileUri(uri),
                 source: source
             });
@@ -487,7 +490,7 @@ export class Requester {
     sendDocumentRangeFormatting(uri: string, source: string, range: Range): Promise<TextEdit[]> {
         return this.whenAnalysed(() => {
             this.send({
-                command: "format_range",
+                kind: "format_range",
                 path: normalizeFileUri(uri),
                 start_line: range.start.line + 1,
                 start_column: range.start.character + 1,
@@ -503,7 +506,7 @@ export class Requester {
     sendFullCompileRequest() {
         this.watchdog.startWatchdogIfNotRunning();
 
-        this.send({ command: "compile" });
+        this.send({ kind: "compile" });
     }
 
     // Ask the analyser to sample the heap. The EditQueue sends this during a
@@ -512,7 +515,7 @@ export class Requester {
     sendHeapCheckRequest() {
         this.watchdog.startWatchdogIfNotRunning();
 
-        this.send({ command: "heap_check" });
+        this.send({ kind: "heap_check" });
     }
 
     // Ask the analyser for its work counters. Cheap — it walks a map and
@@ -531,7 +534,7 @@ export class Requester {
         }
 
         return this.whenAnalysed(() => {
-            this.send({ command: "add_references", paths });
+            this.send({ kind: "add_references", paths });
 
             return this.response_handler.expectAddReferences().then(message => {
                 if (message == null) {
@@ -548,14 +551,14 @@ export class Requester {
     }
 
     sendStatsRequest() {
-        this.send({ command: "stats" });
+        this.send({ kind: "stats" });
     }
 
     sendRestart() {
         if (this.analysed) {
             this.watchdog.startWatchdogIfNotRunning();
 
-            this.send({ command: "restart" });
+            this.send({ kind: "restart" });
         }
     }
 }
