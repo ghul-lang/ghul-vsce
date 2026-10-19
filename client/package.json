@@ -96,7 +96,8 @@
     "test-compile": "tsc -p ./",
     "compile": "tsc -p ./",
     "watch": "tsc -w -p ./",
-    "test": "echo \"No tests yet...\""
+    "typecheck": "tsc --noEmit -p ./",
+    "test": "npm run typecheck"
   },
   "dependencies": {
     "vscode-languageclient": "^10.1.0"
@@ -104,8 +105,8 @@
   "devDependencies": {
     "@types/node": "^26.1.1",
     "@types/vscode": "^1.91.0",
-    "ts-loader": "^9.5.7",
-    "typescript": "^6.0.3",
+    "esbuild-loader": "^4.5.0",
+    "typescript": "^7.0.0",
     "webpack": "^5.106.2",
     "webpack-cli": "^7.0.2"
   }
