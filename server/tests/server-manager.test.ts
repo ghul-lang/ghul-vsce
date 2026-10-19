@@ -253,7 +253,7 @@ describe('ServerManager (state helpers)', () => {
             jest.useRealTimers();
         });
 
-        it('writes the response file it was given, with shell-quoted arguments', () => {
+        it('writes the response file it was given, in the form the compiler reads', () => {
             manager.start();
 
             expect(writeFileSync).toHaveBeenCalledTimes(1);
@@ -262,7 +262,7 @@ describe('ServerManager (state helpers)', () => {
             // multiple compilers in the same host don't stomp on each other
             // and nothing is left behind in the checkout:
             expect(path).toBe(TEST_RESPONSE_FILE);
-            // shell-quote joins with spaces; full argument list must round-trip:
+            // joined with spaces; full argument list must round-trip:
             expect(contents).toBe('-a /path/to/A.dll -a /path/to/B.dll -A');
         });
 
@@ -284,7 +284,7 @@ describe('ServerManager (state helpers)', () => {
             expect(contents.endsWith('-A')).toBe(true);
         });
 
-        it('quotes arguments containing spaces correctly via shell-quote', () => {
+        it('wraps arguments containing spaces in quotes', () => {
             manager.ghul_config = {
                 ...baseConfig,
                 arguments: ['-a', '/path with spaces/A.dll', '-A'],
@@ -292,11 +292,7 @@ describe('ServerManager (state helpers)', () => {
             manager.start();
 
             const [, contents] = (writeFileSync as jest.Mock).mock.calls[0];
-            // shell-quote escapes spaces — the exact escape form is shell-quote's
-            // choice; just verify it round-trips back to the original tokens via
-            // the inverse `parse` to keep the test agnostic of single-vs-backslash:
-            const { parse } = require('shell-quote');
-            expect(parse(contents)).toEqual(['-a', '/path with spaces/A.dll', '-A']);
+            expect(contents).toBe('-a "/path with spaces/A.dll" -A');
         });
 
         it('spawns the compiler head with the rest of its args plus the response file, anchored to the workspace cwd', () => {
