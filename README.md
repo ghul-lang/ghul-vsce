@@ -22,6 +22,29 @@ This Visual Studio Code extension provides support for the [ghūl programming la
 - go to symbol in workspace
 - rename symbol
 
+## Projects and folders
+
+Open a ghūl project's folder, or a folder holding several, and the extension
+runs one analyser for each project it finds. A project is a directory with a
+`.ghulproj` or a `ghul-project.json`. The explorer shows the folder as it is;
+no workspace file is needed.
+
+- A folder that is a project is analysed as one.
+- A folder that is not (no marker, or a manifest of kind `workspace` or
+  `collection`) is never analysed itself. The extension looks under it for
+  projects, skipping `bin`, `obj`, `node_modules` and hidden directories, and
+  starts a project's analyser when a file in it is first opened.
+- A `ghul-project.json` of kind `workspace` lists the projects under it as
+  `members` (paths or globs), and the extension uses that list instead of
+  looking.
+- A manifest of kind `collection` marks a directory of independent programs,
+  such as examples or test cases. The extension does not look inside it and does
+  not analyse its files, and says so once. Open a project inside it as a folder
+  to analyse that project.
+- A project's own sources stop at any other project nested inside it: a file
+  belongs to the nearest enclosing project.
+- A workspace file listing each project as a folder keeps working as it did.
+
 ## Settings
 
 How the extension behaves is configured through ordinary editor settings, so

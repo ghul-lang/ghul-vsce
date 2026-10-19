@@ -1,6 +1,6 @@
 import { pathToFileURL } from 'url';
 
-import { existsSync, readdirSync } from 'fs';
+import { existsSync } from 'fs';
 
 import {
     Connection,
@@ -30,7 +30,7 @@ import { restoreDotNetTools } from './restore-dotnet-tools';
 import { generateAssembliesJson } from './generate-assemblies-json';
 import { generateGhulOptionsJson } from './generate-ghul-options-json';
 import { generateResponseFile } from './generate-response-file';
-import { generateManifestResponseFile, isManifestProject, manifestCompiler, MANIFEST } from './manifest-project';
+import { generateManifestResponseFile, isManifestProject, manifestCompiler } from './manifest-project';
 import { TempDirectory } from './temp-directory';
 
 // How long to wait for the client to answer for its settings before falling
@@ -87,6 +87,16 @@ export class WorkspaceContext {
     client_supports_configuration: boolean = false;
 
     private missing_assembly_watch: Promise<Disposable> | null = null;
+
+    // Directories under this workspace that belong to some other root, as
+    // globs relative to it, left out of its own sources. Set by the registry
+    // from the roots it knows of.
+    boundary_excludes: string[] = [];
+
+    // Whether setup has been asked for. A project discovered under an open
+    // folder is registered when a file in it is first opened, so most of what
+    // a large tree holds never starts a compiler.
+    started: boolean = false;
 
     private initialize_running: Promise<void> | null = null;
     private initialize_queued: Promise<void> | null = null;
@@ -370,6 +380,11 @@ export class WorkspaceContext {
             this.config.problems = [...manifest_problems, ...(this.config.problems ?? [])];
         }
 
+        // A nested project's files belong to that project, not to this one.
+        if (this.boundary_excludes.length) {
+            this.config.exclude = [...(this.config.exclude ?? []), ...this.boundary_excludes];
+        }
+
         problems.push(...(this.config.problems ?? []));
 
         // The step above builds the referenced projects, so anything still
@@ -534,6 +549,8 @@ export class WorkspaceContext {
     // the user; anything reaching here is unforeseen, and must not surface as
     // an unhandled rejection that takes the server down with it.
     initializeDetached() {
+        this.started = true;
+
         this.initialize().catch(e => log(`workspace initialization failed: ${e}`));
     }
 
@@ -607,30 +624,5 @@ export class WorkspaceContext {
         this.document_change_tracker?.dispose();
         this.stopWatchingMissingAssemblies();
         this.temp_directory.dispose();
-    }
-
-    // True when the folder contains at least one .ghulproj, a ghul.json or a
-    // ghul-project.json manifest.
-    // Multi-root setups commonly mix ghūl folders with unrelated ones (docs,
-    // sibling JS projects, …); we only spin up a compiler for the folders
-    // that actually have a ghūl project, otherwise every non-ghūl folder
-    // would surface a "no usable ghūl compiler found" error.
-    //
-    // Uses readdirSync rather than glob so paths containing glob
-    // metacharacters (`[`, `]`, `{`, `}`, `?`) — e.g. `my-project[v2]` —
-    // still match correctly.
-    static looksLikeGhulWorkspace(workspace_root: string): boolean {
-        if (!workspace_root) {
-            return false;
-        }
-
-        let entries: string[];
-        try {
-            entries = readdirSync(workspace_root);
-        } catch {
-            return false;
-        }
-
-        return entries.some(e => e.endsWith('.ghulproj') || e === 'ghul.json' || e === MANIFEST);
     }
 }

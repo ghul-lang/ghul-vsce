@@ -32,12 +32,44 @@ export function isManifestProject(workspace: string): boolean {
         return false;
     }
 
-    return entries.includes(MANIFEST) && !entries.some(e => e.endsWith('.ghulproj'));
+    if (!entries.includes(MANIFEST) || entries.some(e => e.endsWith('.ghulproj'))) {
+        return false;
+    }
+
+    // A workspace and a collection are manifests that describe no project.
+    return manifestKind(workspace).kind === 'project';
+}
+
+// What a directory's ghul-project.json declares it to be: a workspace, which
+// lists the projects under it, a collection of independent programs, or a
+// project. A manifest that cannot be read is a project: the ghul tool reports
+// what is wrong with it, better than this could.
+export function manifestKind(directory: string): { kind: 'project' | 'workspace' | 'collection', members: string[] } {
+    try {
+        let text = readFileSync(join(directory, MANIFEST), 'utf-8').replace(/^\uFEFF/, '');
+        let manifest = JSON.parse(withoutCommentsOrTrailingCommas(text));
+
+        if (manifest?.kind === 'collection') {
+            return { kind: 'collection', members: [] };
+        }
+
+        if (manifest?.kind === 'workspace') {
+            let members = Array.isArray(manifest.members)
+                ? manifest.members.filter((m: unknown): m is string => typeof m === 'string')
+                : [];
+
+            return { kind: 'workspace', members };
+        }
+    } catch {
+        // reported by the ghul tool when it reads the same manifest
+    }
+
+    return { kind: 'project', members: [] };
 }
 
 // The manifest allows // comments and trailing commas, which JSON.parse does
 // not. Strings are copied through untouched, so a // inside one survives.
-function withoutCommentsOrTrailingCommas(text: string): string {
+export function withoutCommentsOrTrailingCommas(text: string): string {
     let result = '';
     let i = 0;
 
