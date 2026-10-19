@@ -55,6 +55,7 @@ function makeMockConnection(): Connection {
     }
     conn.onInitialized = jest.fn();
     conn.onRequest = jest.fn();
+    conn.onNotification = jest.fn();
     conn.languages = {
         semanticTokens: { on: jest.fn() },
         inlayHint: { on: jest.fn() },
@@ -140,6 +141,9 @@ describe('ConnectionEventHandler', () => {
             }),
             removeFolder: jest.fn(),
             setClientSupportsConfiguration: jest.fn(),
+            clientSupportsConfiguration: jest.fn().mockReturnValue(false),
+            setMaxAnalysers: jest.fn(),
+            setVisibleDocuments: jest.fn(),
             setClientSupportsRefresh: jest.fn(),
             allWorkspaces: jest.fn().mockReturnValue([]),
             onDidChangeWatchedFiles: jest.fn(),
@@ -474,7 +478,7 @@ describe('ConnectionEventHandler', () => {
 
             await handler.onCompletion(params, TOKEN);
 
-            expect(extensionState.getWorkspaceForUri).toHaveBeenCalledWith(URI);
+            expect(extensionState.getWorkspaceForUri).toHaveBeenCalledWith(URI, 2);
             expect(editQueue.whenFlushed).toHaveBeenCalled();
 
             // the trigger travels with the query: an analyser that finds no
@@ -860,6 +864,9 @@ describe('ConnectionEventHandler.onAddReferences', () => {
             addFolder: jest.fn().mockReturnValue({ initializeDetached: jest.fn() }),
             removeFolder: jest.fn(),
             setClientSupportsConfiguration: jest.fn(),
+            clientSupportsConfiguration: jest.fn().mockReturnValue(false),
+            setMaxAnalysers: jest.fn(),
+            setVisibleDocuments: jest.fn(),
             setClientSupportsRefresh: jest.fn(),
             allWorkspaces: jest.fn().mockReturnValue([]),
             onDidChangeWatchedFiles: jest.fn(),
@@ -872,7 +879,7 @@ describe('ConnectionEventHandler.onAddReferences', () => {
     it('passes the paths to the workspace holding the document', async () => {
         const result = await handler.onAddReferences({ uri: 'file:///w/input.ghul', paths: ['/cells/a.dll'] });
 
-        expect(getWorkspaceForUri).toHaveBeenCalledWith('file:///w/input.ghul');
+        expect(getWorkspaceForUri).toHaveBeenCalledWith('file:///w/input.ghul', 2);
         expect(requester.sendAddReferences).toHaveBeenCalledWith(['/cells/a.dll']);
         expect(result).toEqual({ message: null });
     });

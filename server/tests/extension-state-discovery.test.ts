@@ -3,7 +3,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
 
-import { ExtensionState } from '../src/extension-state';
+import { ExtensionState, Use } from '../src/extension-state';
 
 // A WorkspaceContext stands up a compiler's worth of machinery, so the
 // registry is exercised against one that only remembers what it was told.
@@ -173,5 +173,130 @@ describe('ExtensionState discovery', () => {
         state.rediscover();
 
         expect(state.getWorkspaceForUri(uri('new/a.ghul'))?.workspace_root).toBe(join(root, 'new'));
+    });
+});
+
+describe('ExtensionState pool', () => {
+    let state: ExtensionState;
+    let clock: jest.SpyInstance;
+
+    function projects(names: string[]) {
+        names.forEach(name => project(name));
+    }
+
+    function started(): string[] {
+        return state.allWorkspaces().map(w => w.workspace_root.slice(root.length + 1)).sort();
+    }
+
+    beforeEach(() => {
+        let tick = 0;
+
+        clock = jest.spyOn(Date, 'now').mockImplementation(() => ++tick);
+
+        root = mkdtempSync(join(tmpdir(), 'ghul-pool-'));
+        state = ExtensionState.getInstance();
+        state.reset();
+        (state as any).connection = { window: { showInformationMessage: jest.fn() }, sendNotification: jest.fn() };
+    });
+
+    afterEach(() => {
+        clock.mockRestore();
+        state.reset();
+        rmSync(root, { recursive: true, force: true });
+    });
+
+    it('does not start a project for a passive request on a document nobody can see', () => {
+        projects(['a', 'b']);
+        state.addFolder(root);
+        state.setVisibleDocuments([uri('a/x.ghul')]);
+
+        expect(state.getWorkspaceForUri(uri('b/x.ghul'), Use.PASSIVE)).toBeNull();
+        expect(started()).toEqual(['a']);
+    });
+
+    it('starts a project for a passive request on a visible document', () => {
+        projects(['a', 'b']);
+        state.addFolder(root);
+        state.setVisibleDocuments([uri('b/x.ghul')]);
+
+        expect(started()).toEqual(['b']);
+    });
+
+    it('treats every open document as visible for a client that never says', () => {
+        projects(['a']);
+        state.addFolder(root);
+
+        expect(state.getWorkspaceForUri(uri('a/x.ghul'), Use.PASSIVE)?.workspace_root).toBe(join(root, 'a'));
+    });
+
+    it('restoring many tabs starts no more analysers than are visible', () => {
+        projects(['p1', 'p2', 'p3', 'p4', 'p5', 'p6']);
+        state.addFolder(root);
+        state.setMaxAnalysers(2);
+        state.setVisibleDocuments([uri('p1/x.ghul')]);
+
+        for (const p of ['p1', 'p2', 'p3', 'p4', 'p5', 'p6']) {
+            state.getWorkspaceForUri(uri(`${p}/x.ghul`), Use.PASSIVE);
+        }
+
+        expect(started()).toEqual(['p1']);
+    });
+
+    it('stops the least recently used interactive project when the cap is reached', () => {
+        projects(['a', 'b', 'c']);
+        state.addFolder(root);
+        state.setMaxAnalysers(2);
+        state.setVisibleDocuments([]);
+
+        state.getWorkspaceForUri(uri('a/x.ghul'));
+        state.getWorkspaceForUri(uri('b/x.ghul'));
+        state.getWorkspaceForUri(uri('a/x.ghul'));
+        state.getWorkspaceForUri(uri('c/x.ghul'));
+
+        expect(started()).toEqual(['a', 'c']);
+    });
+
+    it('never stops a project with a visible editor, even over the cap', () => {
+        projects(['a', 'b', 'c']);
+        state.addFolder(root);
+        state.setMaxAnalysers(1);
+        state.setVisibleDocuments([uri('a/x.ghul'), uri('b/x.ghul')]);
+
+        state.getWorkspaceForUri(uri('c/x.ghul'));
+
+        expect(started()).toEqual(['a', 'b', 'c']);
+
+        state.setVisibleDocuments([uri('a/x.ghul')]);
+
+        expect(started()).toEqual(['a']);
+    });
+
+    it('lowering the cap stops the surplus at once', () => {
+        projects(['a', 'b', 'c']);
+        state.addFolder(root);
+        state.setVisibleDocuments([]);
+        state.getWorkspaceForUri(uri('a/x.ghul'));
+        state.getWorkspaceForUri(uri('b/x.ghul'));
+        state.getWorkspaceForUri(uri('c/x.ghul'));
+
+        state.setMaxAnalysers(1);
+
+        expect(started()).toEqual(['c']);
+    });
+
+    it('starts a stopped project again on its next interactive use', () => {
+        projects(['a', 'b']);
+        state.addFolder(root);
+        state.setMaxAnalysers(1);
+        state.setVisibleDocuments([]);
+
+        state.getWorkspaceForUri(uri('a/x.ghul'));
+        state.getWorkspaceForUri(uri('b/x.ghul'));
+
+        expect(started()).toEqual(['b']);
+
+        state.getWorkspaceForUri(uri('a/x.ghul'));
+
+        expect(started()).toEqual(['a']);
     });
 });
