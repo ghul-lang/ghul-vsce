@@ -24,13 +24,12 @@ module.exports = function withDefaults(/**@type WebpackConfig*/extConfig) {
 				test: /\.ts$/,
 				exclude: /node_modules/,
 				use: [{
-					// configure TypeScript loader:
-					// * enable sources maps for end-to-end source maps
-					loader: 'ts-loader',
+					// transpile only: TypeScript 7 has no loader API, so types are
+					// checked separately by tsc (see the typecheck scripts)
+					loader: 'esbuild-loader',
 					options: {
-						compilerOptions: {
-							"sourceMap": true,
-						}
+						loader: 'ts',
+						target: 'es2020'
 					}
 				}]
 			}]

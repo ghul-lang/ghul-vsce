@@ -47,8 +47,8 @@
     "babel-jest": "^30.4.1",
     "jest": "^30.4.2",
     "merge-options": "^3.0.4",
-    "ts-loader": "^9.5.7",
-    "typescript": "^6.0.3",
+    "esbuild-loader": "^4.5.0",
+    "typescript": "^7.0.0",
     "webpack": "^5.106.2",
     "webpack-cli": "^7.0.2"
   },
