@@ -135,10 +135,10 @@ describe('ConnectionEventHandler', () => {
         extensionState = {
             getWorkspaceForUri: jest.fn().mockReturnValue(workspace),
             defaultWorkspace: jest.fn().mockReturnValue(workspace),
-            registerWorkspace: jest.fn().mockReturnValue({
+            addFolder: jest.fn().mockReturnValue({
                 initializeDetached: jest.fn(),
             }),
-            unregisterWorkspace: jest.fn(),
+            removeFolder: jest.fn(),
             setClientSupportsConfiguration: jest.fn(),
             setClientSupportsRefresh: jest.fn(),
             allWorkspaces: jest.fn().mockReturnValue([]),
@@ -167,24 +167,10 @@ describe('ConnectionEventHandler', () => {
     });
 
     describe('onInitialize', () => {
-        let looksLikeSpy: jest.SpyInstance;
-
-        beforeEach(() => {
-            // looksLikeGhulWorkspace probes the filesystem for .ghulproj /
-            // ghul.json; the synthetic paths these tests use don't exist on
-            // disk, so spy and decide the answer per test.
-            looksLikeSpy = jest.spyOn(WorkspaceContext, 'looksLikeGhulWorkspace')
-                .mockReturnValue(true);
-        });
-
-        afterEach(() => {
-            looksLikeSpy.mockRestore();
-        });
-
         it('registers one workspace per entry in params.workspaceFolders', () => {
             const initializeA = jest.fn();
             const initializeB = jest.fn();
-            (extensionState.registerWorkspace as jest.Mock)
+            (extensionState.addFolder as jest.Mock)
                 .mockReturnValueOnce({ initializeDetached: initializeA })
                 .mockReturnValueOnce({ initializeDetached: initializeB });
 
@@ -195,9 +181,9 @@ describe('ConnectionEventHandler', () => {
                 ],
             } as any);
 
-            expect(extensionState.registerWorkspace).toHaveBeenCalledTimes(2);
-            expect(extensionState.registerWorkspace).toHaveBeenNthCalledWith(1, '/workspace/a');
-            expect(extensionState.registerWorkspace).toHaveBeenNthCalledWith(2, '/workspace/b');
+            expect(extensionState.addFolder).toHaveBeenCalledTimes(2);
+            expect(extensionState.addFolder).toHaveBeenNthCalledWith(1, '/workspace/a');
+            expect(extensionState.addFolder).toHaveBeenNthCalledWith(2, '/workspace/b');
 
             // Workspace setup is deferred to onInitialized — see the race it
             // avoids in connection-event-handler.ts — so it hasn't run yet.
@@ -210,8 +196,10 @@ describe('ConnectionEventHandler', () => {
             expect(initializeB).toHaveBeenCalled();
         });
 
-        it('skips workspace folders that do not look like a ghūl workspace', () => {
-            looksLikeSpy.mockImplementation(root => root === '/workspace/ghul-project');
+        it('starts only a folder that is a project of its own, and still hands every folder over', () => {
+            const initialize = jest.fn();
+            (extensionState.addFolder as jest.Mock).mockImplementation((root: string) =>
+                root === '/workspace/ghul-project' ? { initializeDetached: initialize } : null);
 
             handler.onInitialize({
                 workspaceFolders: [
@@ -220,26 +208,29 @@ describe('ConnectionEventHandler', () => {
                 ],
             } as any);
 
-            expect(extensionState.registerWorkspace).toHaveBeenCalledTimes(1);
-            expect(extensionState.registerWorkspace).toHaveBeenCalledWith('/workspace/ghul-project');
+            expect(extensionState.addFolder).toHaveBeenCalledTimes(2);
+
+            (connection as any).onInitialized.mock.calls[0][0]();
+
+            expect(initialize).toHaveBeenCalledTimes(1);
         });
 
         it('falls back to params.rootUri when workspaceFolders is absent', () => {
             handler.onInitialize({ rootUri: 'file:///legacy/root' } as any);
 
-            expect(extensionState.registerWorkspace).toHaveBeenCalledWith('/legacy/root');
+            expect(extensionState.addFolder).toHaveBeenCalledWith('/legacy/root');
         });
 
         it('falls back to params.rootPath when neither workspaceFolders nor rootUri is set', () => {
             handler.onInitialize({ rootPath: '/legacy/root' } as any);
 
-            expect(extensionState.registerWorkspace).toHaveBeenCalledWith('/legacy/root');
+            expect(extensionState.addFolder).toHaveBeenCalledWith('/legacy/root');
         });
 
         it('registers nothing when the client opens a single file outside any workspace', () => {
             handler.onInitialize({} as any);
 
-            expect(extensionState.registerWorkspace).not.toHaveBeenCalled();
+            expect(extensionState.addFolder).not.toHaveBeenCalled();
         });
 
         it('defers workspace folder change subscription until onInitialized fires', () => {
@@ -381,21 +372,10 @@ describe('ConnectionEventHandler', () => {
     });
 
     describe('onDidChangeWorkspaceFolders', () => {
-        let looksLikeSpy: jest.SpyInstance;
-
-        beforeEach(() => {
-            looksLikeSpy = jest.spyOn(WorkspaceContext, 'looksLikeGhulWorkspace')
-                .mockReturnValue(true);
-        });
-
-        afterEach(() => {
-            looksLikeSpy.mockRestore();
-        });
-
         it('registers and initialises every added folder that looks ghūl-ish', () => {
             const initializeA = jest.fn();
             const initializeB = jest.fn();
-            (extensionState.registerWorkspace as jest.Mock)
+            (extensionState.addFolder as jest.Mock)
                 .mockReturnValueOnce({ initializeDetached: initializeA })
                 .mockReturnValueOnce({ initializeDetached: initializeB });
 
@@ -407,22 +387,22 @@ describe('ConnectionEventHandler', () => {
                 removed: [],
             });
 
-            expect(extensionState.registerWorkspace).toHaveBeenCalledTimes(2);
-            expect(extensionState.registerWorkspace).toHaveBeenNthCalledWith(1, '/workspace/new-a');
-            expect(extensionState.registerWorkspace).toHaveBeenNthCalledWith(2, '/workspace/new-b');
+            expect(extensionState.addFolder).toHaveBeenCalledTimes(2);
+            expect(extensionState.addFolder).toHaveBeenNthCalledWith(1, '/workspace/new-a');
+            expect(extensionState.addFolder).toHaveBeenNthCalledWith(2, '/workspace/new-b');
             expect(initializeA).toHaveBeenCalled();
             expect(initializeB).toHaveBeenCalled();
         });
 
-        it('does not register added folders that do not look like a ghūl workspace', () => {
-            looksLikeSpy.mockReturnValue(false);
+        it('does not start an added folder that is not a project of its own', () => {
+            (extensionState.addFolder as jest.Mock).mockReturnValue(null);
 
             handler.onDidChangeWorkspaceFolders({
                 added: [{ uri: 'file:///workspace/docs', name: 'docs' }],
                 removed: [],
             });
 
-            expect(extensionState.registerWorkspace).not.toHaveBeenCalled();
+            expect(extensionState.addFolder).toHaveBeenCalledWith('/workspace/docs');
         });
 
         it('unregisters every removed folder', () => {
@@ -434,9 +414,9 @@ describe('ConnectionEventHandler', () => {
                 ],
             });
 
-            expect(extensionState.unregisterWorkspace).toHaveBeenCalledTimes(2);
-            expect(extensionState.unregisterWorkspace).toHaveBeenCalledWith('/workspace/gone-a');
-            expect(extensionState.unregisterWorkspace).toHaveBeenCalledWith('/workspace/gone-b');
+            expect(extensionState.removeFolder).toHaveBeenCalledTimes(2);
+            expect(extensionState.removeFolder).toHaveBeenCalledWith('/workspace/gone-a');
+            expect(extensionState.removeFolder).toHaveBeenCalledWith('/workspace/gone-b');
         });
 
         it('processes removals before additions so a re-added folder rebuilds cleanly', () => {
@@ -445,10 +425,10 @@ describe('ConnectionEventHandler', () => {
             // remove must land first so the second add doesn't no-op against
             // the stale registration.
             const order: string[] = [];
-            (extensionState.unregisterWorkspace as jest.Mock).mockImplementation((root: string) => {
+            (extensionState.removeFolder as jest.Mock).mockImplementation((root: string) => {
                 order.push(`remove:${root}`);
             });
-            (extensionState.registerWorkspace as jest.Mock).mockImplementation((root: string) => {
+            (extensionState.addFolder as jest.Mock).mockImplementation((root: string) => {
                 order.push(`add:${root}`);
                 return { initializeDetached: jest.fn() };
             });
@@ -877,8 +857,8 @@ describe('ConnectionEventHandler.onAddReferences', () => {
         const extensionState = {
             getWorkspaceForUri,
             defaultWorkspace: jest.fn(),
-            registerWorkspace: jest.fn().mockReturnValue({ initializeDetached: jest.fn() }),
-            unregisterWorkspace: jest.fn(),
+            addFolder: jest.fn().mockReturnValue({ initializeDetached: jest.fn() }),
+            removeFolder: jest.fn(),
             setClientSupportsConfiguration: jest.fn(),
             setClientSupportsRefresh: jest.fn(),
             allWorkspaces: jest.fn().mockReturnValue([]),

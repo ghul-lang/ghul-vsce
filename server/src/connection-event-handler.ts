@@ -233,13 +233,15 @@ export class ConnectionEventHandler {
 
         const workspaces: WorkspaceContext[] = [];
 
+        // An open folder is a project only if its own marker says so. Whatever
+        // else it holds is found and recorded, and starts when a file in it
+        // is opened; a folder that is not a project is not an analyser root.
         for (const root of roots) {
-            if (!WorkspaceContext.looksLikeGhulWorkspace(root)) {
-                log(`skipping non-ghūl workspace folder: ${root}`);
-                continue;
-            }
+            const own = this.extension_state.addFolder(root);
 
-            workspaces.push(this.extension_state.registerWorkspace(root));
+            if (own) {
+                workspaces.push(own);
+            }
         }
 
         const wants_folder_events = !!params.capabilities?.workspace?.workspaceFolders;
@@ -399,7 +401,7 @@ export class ConnectionEventHandler {
             const root = this.folderUriToPath(folder.uri);
             if (root) {
                 log(`workspace folder removed: ${root}`);
-                this.extension_state.unregisterWorkspace(root);
+                this.extension_state.removeFolder(root);
             }
         }
 
@@ -409,14 +411,8 @@ export class ConnectionEventHandler {
                 continue;
             }
 
-            if (!WorkspaceContext.looksLikeGhulWorkspace(root)) {
-                log(`skipping added non-ghūl workspace folder: ${root}`);
-                continue;
-            }
-
             log(`workspace folder added: ${root}`);
-            const workspace = this.extension_state.registerWorkspace(root);
-            workspace.initializeDetached();
+            this.extension_state.addFolder(root)?.initializeDetached();
         }
     }
 
