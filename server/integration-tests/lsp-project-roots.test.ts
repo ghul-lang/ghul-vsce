@@ -80,11 +80,24 @@ function open(client: LspClient, path: string) {
     });
 }
 
-function hover(client: LspClient, path: string) {
-    return withDiagnostics(client.request('textDocument/hover', {
-        textDocument: { uri: pathToFileURL(path).toString() },
-        position: { line: 2, character: 2 },
-    }), client, `hover in ${path}`, 120000);
+// A hover asked of a project whose analyser is still starting can come back
+// empty, as it can in an editor, which asks again. A cold dependency restore on
+// a slow machine can take longer than the server waits for the first answer.
+async function hover(client: LspClient, path: string, wait_ms: number = 120000) {
+    const deadline = Date.now() + wait_ms;
+
+    for (;;) {
+        const answer = await withDiagnostics(client.request('textDocument/hover', {
+            textDocument: { uri: pathToFileURL(path).toString() },
+            position: { line: 2, character: 2 },
+        }), client, `hover in ${path}`, wait_ms);
+
+        if (answer != null || Date.now() > deadline) {
+            return answer;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 2000));
+    }
 }
 
 describe('where analysers run under what the user opens (no mocks, no VS Code)', () => {
@@ -148,7 +161,7 @@ describe('where analysers run under what the user opens (no mocks, no VS Code)',
         open(client, sourceOf('alpha'));
 
         // Nothing owns the file, so there is nothing to answer a hover.
-        const answer = await hover(client, sourceOf('alpha'));
+        const answer = await hover(client, sourceOf('alpha'), 3000);
 
         expect(answer == null || JSON.stringify(answer).includes('greet_alpha') === false).toBe(true);
         expect(client.logMessages.some(m => m.includes('collection of independent projects'))).toBe(true);

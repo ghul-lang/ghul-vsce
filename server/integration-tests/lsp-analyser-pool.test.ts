@@ -42,11 +42,23 @@ function within<T>(promise: Promise<T>, client: LspClient, step: string, ms: num
     ]);
 }
 
-function hover(client: LspClient, name: string) {
-    return within(client.request('textDocument/hover', {
-        textDocument: { uri: uri(name) },
-        position: { line: 2, character: 2 },
-    }), client, `hover in ${name}`, 150000);
+// A hover asked of a project whose analyser is still starting can come back
+// empty, as it can in an editor, which asks again.
+async function hover(client: LspClient, name: string) {
+    const deadline = Date.now() + 150000;
+
+    for (;;) {
+        const answer = await within(client.request('textDocument/hover', {
+            textDocument: { uri: uri(name) },
+            position: { line: 2, character: 2 },
+        }), client, `hover in ${name}`, 150000);
+
+        if (answer != null || Date.now() > deadline) {
+            return answer;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 2000));
+    }
 }
 
 function started(client: LspClient): string[] {
