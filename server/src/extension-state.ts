@@ -16,9 +16,26 @@ import { ConnectionEventHandler } from './connection-event-handler';
 
 import { WorkspaceContext } from './workspace-context';
 
+import { trace } from './request-trace';
+
+import { AnalyserPool } from './analyser-pool';
+
+import { normalizeFileUri } from './normalize-file-uri';
+
 import { boundaryExcludes, discoverRoots, DiscoveredRoots } from './project-roots';
 
 import { log } from './log';
+
+// What a request or notification is for, which decides whether it may start an
+// analyser. An interactive use is the user asking for something and starts the
+// project's analyser; a passive one is the editor refreshing a view, and starts
+// it only for a visible document, so restoring many tabs does not start many
+// analysers; a watch is a file event and starts nothing.
+export enum Use {
+    WATCH,
+    PASSIVE,
+    INTERACTIVE
+}
 
 // Top-level host. Owns the single LSP Connection and the shared TextDocuments
 // registry, plus a registry of WorkspaceContext instances. Per-workspace state
@@ -55,6 +72,20 @@ export class ExtensionState {
 
     private rediscovery_timer: ReturnType<typeof setTimeout> | null = null;
 
+    // Which projects' analysers run, and which to stop when too many would.
+    private pool: AnalyserPool = new AnalyserPool(4);
+
+    // The documents in visible editors, as the client last reported them, or
+    // null for a client that never reports: then every open document counts as
+    // visible.
+    private visible: Set<string> | null = null;
+
+    private over_cap_reported: boolean = false;
+
+    // The event a document was just opened with, which the same document's
+    // content-changed notification is about to repeat.
+    private just_opened: object | null = null;
+
     private constructor() {
     }
 
@@ -72,6 +103,9 @@ export class ExtensionState {
         this.workspaces.clear();
         this.discovered.clear();
         this.announced_collections.clear();
+        this.pool = new AnalyserPool(4);
+        this.visible = null;
+        this.over_cap_reported = false;
 
         if (this.rediscovery_timer) {
             clearTimeout(this.rediscovery_timer);
@@ -86,16 +120,26 @@ export class ExtensionState {
         // Per-URI demux: route the change to the workspace that owns the file.
         // If no workspace owns it, drop the change — the file is outside every
         // registered .ghulproj source set.
+        //
+        // Opening a document also reports it as changed, with the very same
+        // event, and that is not an edit: it must not start an analyser for a
+        // tab that was only restored.
         this.documents.onDidChangeContent((change) => {
-            const workspace = this.getWorkspaceForUri(change.document.uri);
+            const opening = change === this.just_opened;
+
+            this.just_opened = null;
+
+            trace(opening ? 'didOpenContent' : 'didChange', change.document.uri, this);
+
+            const workspace = this.getWorkspaceForUri(change.document.uri, opening ? Use.PASSIVE : Use.INTERACTIVE);
 
             workspace?.edit_queue.queueEdit(change);
         });
 
         // Open-set membership changes only on open/close, not on every
         // keystroke — so track those events rather than content changes.
-        this.documents.onDidOpen(() => this.broadcastOpenFiles());
-        this.documents.onDidClose(() => this.broadcastOpenFiles());
+        this.documents.onDidOpen((e) => { this.just_opened = e; trace('didOpen', e.document.uri, this); this.broadcastOpenFiles(); });
+        this.documents.onDidClose((e) => { trace('didClose', e.document.uri, this); this.broadcastOpenFiles(); });
 
         this.connection_event_handler = new ConnectionEventHandler(
             this,
@@ -116,6 +160,10 @@ export class ExtensionState {
     // being a hint. Set from the client's declared capabilities before any
     // workspace initializes, and applied to folders added later too.
     private client_supports_configuration: boolean = false;
+
+    public clientSupportsConfiguration(): boolean {
+        return this.client_supports_configuration;
+    }
 
     public setClientSupportsConfiguration(supported: boolean) {
         this.client_supports_configuration = supported;
@@ -306,7 +354,107 @@ export class ExtensionState {
         this.applyBoundaries();
         context.initializeDetached();
 
+        log(`pool: started ${root} (${this.workspaces.size} of ${this.pool.cap})`);
+
+        // Documents opened while this project was not running reached nothing;
+        // hand it their current text, which for a restored unsaved buffer is
+        // not what is on disk.
+        for (const document of this.documents?.all() ?? []) {
+            if (this.isUnder(URI.parse(document.uri).fsPath, root) && context.claimsSourceFile(document.uri)) {
+                context.edit_queue.queueEdit(Object.freeze({ document }));
+            }
+        }
+
+        this.enforcePool(root);
+        this.announcePool();
+
         return context;
+    }
+
+    // Stops analysers until no more run than the cap allows, leaving alone the
+    // project just started and those with a visible editor.
+    private enforcePool(keep?: string) {
+        for (const root of this.pool.evictions(Array.from(this.workspaces.keys()), keep)) {
+            const since = this.pool.idleSince(root);
+            const idle = since === undefined ? 'never used interactively' : `idle ${Math.round((Date.now() - since) / 1000)}s`;
+
+            log(`pool: evicted ${root}, ${idle}`);
+
+            this.unregisterWorkspace(root);
+        }
+
+        const over = this.pool.overCap(Array.from(this.workspaces.keys()));
+
+        if (over > 0 && !this.over_cap_reported) {
+            this.over_cap_reported = true;
+
+            log(`pool: ${over} more project(s) are visible than the cap of ${this.pool.cap}; they stay running`);
+        } else if (over === 0) {
+            this.over_cap_reported = false;
+        }
+    }
+
+    // The most analysers to keep running. Lowered, it stops the surplus at once.
+    public setMaxAnalysers(count: number) {
+        if (!Number.isFinite(count) || count < 1 || count === this.pool.cap) {
+            return;
+        }
+
+        this.pool.cap = Math.floor(count);
+
+        log(`pool: cap is ${this.pool.cap}`);
+
+        this.enforcePool();
+        this.announcePool();
+    }
+
+    // The documents in visible editors. Their projects are pinned and, if not
+    // running, started.
+    public setVisibleDocuments(uris: string[]) {
+        this.visible = new Set(uris.map(uri => this.normalise(uri)));
+
+        // Pinned before anything is started, so starting one visible project
+        // cannot stop another.
+        const pinned = new Set<string>();
+
+        for (const uri of uris) {
+            const route = this.describeRoute(uri);
+            const colon = route.indexOf(':');
+
+            if (colon > 0 && route.slice(0, colon) !== 'collection') {
+                pinned.add(route.slice(colon + 1));
+            }
+        }
+
+        this.pool.setPinned(pinned);
+
+        for (const uri of uris) {
+            this.getWorkspaceForUri(uri, Use.PASSIVE);
+        }
+
+        this.enforcePool();
+        this.announcePool();
+    }
+
+    private normalise(uri: string): string {
+        try {
+            return normalizeFileUri(uri);
+        } catch {
+            return uri;
+        }
+    }
+
+    private isVisible(uri: string): boolean {
+        return this.visible === null || this.visible.has(this.normalise(uri));
+    }
+
+    // Tells the client what runs, for its status bar.
+    private announcePool() {
+        this.connection?.sendNotification?.('ghul/pool', {
+            started: Array.from(this.workspaces.keys()),
+            cap: this.pool.cap,
+            pinned: Array.from(this.workspaces.keys()).filter(root => this.pool.isPinned(root))
+        });
     }
 
     private announceCollection(collection: string) {
@@ -325,6 +473,33 @@ export class ExtensionState {
         this.connection?.window?.showInformationMessage(message);
     }
 
+    // Where a document would route, for the request trace: the innermost root
+    // that contains it, and whether that root is started, waiting, or a
+    // collection. Starts nothing.
+    public describeRoute(uri: string): string {
+        let fs_path: string;
+
+        try {
+            fs_path = URI.parse(uri).fsPath;
+        } catch {
+            return 'unparsable';
+        }
+
+        let best: { root: string, kind: string } | null = null;
+
+        const consider = (root: string, kind: string) => {
+            if (this.isUnder(fs_path, root) && (!best || root.length > best.root.length)) {
+                best = { root, kind };
+            }
+        };
+
+        this.workspaces.forEach((_c, root) => consider(root, 'started'));
+        this.pendingProjects().forEach(root => consider(root, 'pending'));
+        this.collectionRoots().forEach(root => consider(root, 'collection'));
+
+        return best ? `${(best as any).kind}:${(best as any).root}` : 'none';
+    }
+
     public unregisterWorkspace(workspace_root: string) {
         const context = this.workspaces.get(workspace_root);
 
@@ -332,8 +507,10 @@ export class ExtensionState {
             return;
         }
 
+        context.response_handler.clearPublishedDiagnostics?.();
         context.dispose();
         this.workspaces.delete(workspace_root);
+        this.pool.forget(workspace_root);
     }
 
     public allWorkspaces(): WorkspaceContext[] {
@@ -348,7 +525,7 @@ export class ExtensionState {
         const uris_by_workspace = new Map<WorkspaceContext, string[]>();
 
         for (const document of this.documents.all()) {
-            const workspace = this.getWorkspaceForUri(document.uri);
+            const workspace = this.getWorkspaceForUri(document.uri, Use.PASSIVE);
 
             if (!workspace) {
                 continue;
@@ -387,7 +564,7 @@ export class ExtensionState {
     // (a file-watcher event for a project nobody has opened must not start
     // its compiler). A file under a collection, and not under a project
     // inside it, belongs to no workspace: the collection is announced once.
-    public getWorkspaceForUri(uri: string, activate: boolean = true): WorkspaceContext | null {
+    public getWorkspaceForUri(uri: string, use: Use = Use.INTERACTIVE): WorkspaceContext | null {
         let fs_path: string;
 
         try {
@@ -432,7 +609,7 @@ export class ExtensionState {
 
         for (const candidate of candidates) {
             if (candidate.kind === 'collection') {
-                if (activate) {
+                if (use !== Use.WATCH) {
                     this.announceCollection(candidate.root);
                 }
 
@@ -440,10 +617,20 @@ export class ExtensionState {
             }
 
             if (candidate.kind === 'pending') {
-                return activate ? this.activate(candidate.root) : null;
+                const starts = use === Use.INTERACTIVE || (use === Use.PASSIVE && this.isVisible(uri));
+
+                if (use === Use.INTERACTIVE) {
+                    this.pool.touch(candidate.root);
+                }
+
+                return starts ? this.activate(candidate.root) : null;
             }
 
             if (candidate.context!.claimsSourceFile(uri)) {
+                if (use === Use.INTERACTIVE) {
+                    this.pool.touch(candidate.root);
+                }
+
                 return candidate.context!;
             }
         }
@@ -464,7 +651,7 @@ export class ExtensionState {
                 this.scheduleRediscovery();
             }
 
-            const workspace = this.getWorkspaceForUri(change.uri, false);
+            const workspace = this.getWorkspaceForUri(change.uri, Use.WATCH);
 
             if (!workspace) {
                 continue;

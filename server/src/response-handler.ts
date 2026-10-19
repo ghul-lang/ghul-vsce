@@ -738,8 +738,21 @@ export class ResponseHandler {
     // applies diagnostics and drives the edit-queue state machine — except for
     // phase "query", which (like the old query-miss DIAGNOSTICS frame that had
     // no following DONE) must not advance the state machine.
+    // Every document diagnostics were published for, so they can be cleared
+    // when the analyser behind them is stopped.
+    private published_uris: Set<string> = new Set();
+
+    clearPublishedDiagnostics() {
+        for (const uri of this.published_uris) {
+            this.connection.sendDiagnostics({ uri, diagnostics: [] });
+        }
+
+        this.published_uris.clear();
+    }
+
     handleDiagnostics(response: DiagnosticsResponse) {
         for (let [uri, diagnostics] of this.parseDiagnostics(response)) {
+            this.published_uris.add(uri);
             this.connection.sendDiagnostics({ uri, diagnostics });
         }
 

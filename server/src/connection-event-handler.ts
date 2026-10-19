@@ -46,8 +46,9 @@ import { SEMANTIC_TOKENS_LEGEND } from './response-handler';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import { log } from './log';
+import { trace } from './request-trace';
 
-import { ExtensionState } from './extension-state';
+import { ExtensionState, Use } from './extension-state';
 
 import { CompilerQuickFixProvider } from './compiler-quick-fix-provider';
 
@@ -118,27 +119,27 @@ export class ConnectionEventHandler {
 
         connection.onCompletion(
             (textDocumentPosition: CompletionParams, token: CancellationToken): Promise<CompletionItem[]> =>
-                this.onCompletion(textDocumentPosition, token));
+                this.traced('completion', textDocumentPosition, () => this.onCompletion(textDocumentPosition, token)));
 
         connection.onHover(
             (params: TextDocumentPositionParams, token: CancellationToken): Promise<Hover> =>
-                this.onHover(params, token));
+                this.traced('hover', params, () => this.onHover(params, token)));
 
         connection.onDefinition(
             (params: TextDocumentPositionParams, token: CancellationToken): Promise<Definition> =>
-                this.onDefinition(params, token));
+                this.traced('definition', params, () => this.onDefinition(params, token)));
 
         connection.onDeclaration(
             (params: TextDocumentPositionParams, token: CancellationToken): Promise<Definition> =>
-                this.onDeclaration(params, token));
+                this.traced('declaration', params, () => this.onDeclaration(params, token)));
 
         connection.onSignatureHelp(
             (params: TextDocumentPositionParams, token: CancellationToken): Promise<SignatureHelp> =>
-                this.onSignatureHelp(params, token));
+                this.traced('signatureHelp', params, () => this.onSignatureHelp(params, token)));
 
         connection.onDocumentSymbol(
             (params: DocumentSymbolParams, token: CancellationToken): Promise<SymbolInformation[]> =>
-                this.onDocumentSymbol(params, token));
+                this.traced('documentSymbol', params, () => this.onDocumentSymbol(params, token)));
 
         connection.onWorkspaceSymbol(
             (_params: WorkspaceSymbolParams, token: CancellationToken): Promise<SymbolInformation[]> =>
@@ -146,45 +147,60 @@ export class ConnectionEventHandler {
 
         connection.onReferences(
             (params: ReferenceParams, token: CancellationToken): Promise<Location[]> =>
-                this.onReferences(params, token));
+                this.traced('references', params, () => this.onReferences(params, token)));
 
         connection.onImplementation(
             (params: TextDocumentPositionParams, token: CancellationToken): Promise<Definition> =>
-                this.onImplementation(params, token));
+                this.traced('implementation', params, () => this.onImplementation(params, token)));
 
         connection.onTypeDefinition(
             (params: TextDocumentPositionParams, token: CancellationToken): Promise<Definition> =>
-                this.onTypeDefinition(params, token));
+                this.traced('typeDefinition', params, () => this.onTypeDefinition(params, token)));
 
         connection.onRenameRequest(
              (params: RenameParams): Promise<WorkspaceEdit> =>
-                this.onRenameRequest(params));
+                this.traced('rename', params, () => this.onRenameRequest(params)));
 
         connection.onDocumentFormatting(
             (params: DocumentFormattingParams): Promise<TextEdit[]> =>
-                this.onDocumentFormatting(params));
+                this.traced('format', params, () => this.onDocumentFormatting(params)));
 
         connection.onDocumentRangeFormatting(
             (params: DocumentRangeFormattingParams): Promise<TextEdit[]> =>
-                this.onDocumentRangeFormatting(params));
+                this.traced('formatRange', params, () => this.onDocumentRangeFormatting(params)));
 
         connection.languages.semanticTokens.on(
             (params: SemanticTokensParams, token: CancellationToken): Promise<SemanticTokens> =>
-                this.onSemanticTokens(params, token));
+                this.traced('semanticTokens', params, () => this.onSemanticTokens(params, token)));
 
         connection.languages.inlayHint.on(
             (params: InlayHintParams, token: CancellationToken): Promise<InlayHint[]> =>
-                this.onInlayHint(params, token));
+                this.traced('inlayHint', params, () => this.onInlayHint(params, token)));
 
         connection.onCodeAction(
             (params: CodeActionParams): Promise<(Command | CodeAction)[]> =>
-                this.onCodeAction(params));
+                this.traced('codeAction', params, () => this.onCodeAction(params)));
+
+        // Not part of LSP: the client's visible ghūl editors, which pin their
+        // projects' analysers (see AnalyserPool).
+        connection.onNotification('ghul/visibleDocuments',
+            (params: { uris?: string[] }) =>
+                this.extension_state.setVisibleDocuments(Array.isArray(params?.uris) ? params.uris : []));
 
         // Not part of LSP: an interactive session's host adds each cell it has
         // compiled to the reference set of the workspace holding its input.
         connection.onRequest('ghul/addReferences',
             (params: AddReferencesParams): Promise<{ message: string | null }> =>
                 this.onAddReferences(params));
+    }
+
+    // Request tracing for measuring what the client sends: when
+    // GHUL_REQUEST_TRACE names a file, one JSON line is appended per request
+    // with the kind, the document and where it routes, without starting
+    // anything.
+    private traced<T>(kind: string, params: any, run: () => T): T {
+        trace(kind, params?.textDocument?.uri, this.extension_state);
+        return run();
     }
 
     async onAddReferences(params: AddReferencesParams): Promise<{ message: string | null }> {
@@ -207,8 +223,8 @@ export class ConnectionEventHandler {
     // null when the URI lives outside every registered workspace (or when no
     // workspace is registered yet); the per-request handlers below treat that
     // as an empty result.
-    private workspaceForUri(uri: string): WorkspaceContext | null {
-        return this.extension_state.getWorkspaceForUri(uri);
+    private workspaceForUri(uri: string, use: Use = Use.INTERACTIVE): WorkspaceContext | null {
+        return this.extension_state.getWorkspaceForUri(uri, use);
     }
 
     onInitialize(params: any): InitializeResult {
@@ -228,6 +244,12 @@ export class ConnectionEventHandler {
             !!params.capabilities?.workspace?.semanticTokens?.refreshSupport &&
             !!params.capabilities?.workspace?.inlayHint?.refreshSupport
         );
+
+        const initial_cap = params.initializationOptions?.maxAnalysers;
+
+        if (typeof initial_cap === 'number') {
+            this.extension_state.setMaxAnalysers(initial_cap);
+        }
 
         const roots = this.collectWorkspaceRoots(params);
 
@@ -275,6 +297,8 @@ export class ConnectionEventHandler {
         // the client confirms it has finished processing the response, so
         // waiting for it removes the race entirely.
         this.connection.onInitialized(() => {
+            this.readMaxAnalysers();
+
             for (const workspace of workspaces) {
                 // Deliberately not awaited: initialized still arrives well
                 // before the client is done with its own start-up work (or
@@ -428,6 +452,24 @@ export class ConnectionEventHandler {
         log("language extension: exit");
     }
 
+    // The cap on running analysers is an editor-wide setting, read here rather
+    // than per workspace. A client that cannot be asked keeps the default, or
+    // the cap it was started with.
+    private readMaxAnalysers() {
+        if (!this.extension_state.clientSupportsConfiguration() || !this.connection?.workspace?.getConfiguration) {
+            return;
+        }
+
+        Promise.race([
+            this.connection.workspace.getConfiguration('ghul.analysers.max'),
+            new Promise<null>(resolve => setTimeout(() => resolve(null), 5000).unref?.())
+        ]).then(value => {
+            if (typeof value === 'number') {
+                this.extension_state.setMaxAnalysers(value);
+            }
+        }).catch(e => log(`could not read ghul.analysers.max: ${e}`));
+    }
+
     // Settings are read during workspace setup and turned into the analyser's
     // command line, so a change only takes effect by going round again — which
     // restarts the compiler, since some of them (incremental analysis) are
@@ -438,6 +480,8 @@ export class ConnectionEventHandler {
     // than as a source of values.
     onDidChangeConfiguration(_change: DidChangeConfigurationParams) {
         log("language extension: configuration changed");
+
+        this.readMaxAnalysers();
 
         for (const workspace of this.extension_state.allWorkspaces()) {
             workspace.reinitialize();
@@ -513,7 +557,7 @@ export class ConnectionEventHandler {
     }
 
     onDocumentSymbol(params: DocumentSymbolParams, token?: CancellationToken): Promise<SymbolInformation[]> {
-        const workspace = this.workspaceForUri(params.textDocument.uri);
+        const workspace = this.workspaceForUri(params.textDocument.uri, Use.PASSIVE);
 
         if (!workspace) {
             return Promise.resolve([]);
@@ -618,7 +662,7 @@ export class ConnectionEventHandler {
             return [];
         }
 
-        const workspace = this.workspaceForUri(params.textDocument.uri);
+        const workspace = this.workspaceForUri(params.textDocument.uri, Use.PASSIVE);
 
         if (!workspace) {
             return [];
@@ -642,7 +686,7 @@ export class ConnectionEventHandler {
     }
 
     onSemanticTokens(params: SemanticTokensParams, token?: CancellationToken): Promise<SemanticTokens> {
-        const workspace = this.workspaceForUri(params.textDocument.uri);
+        const workspace = this.workspaceForUri(params.textDocument.uri, Use.PASSIVE);
 
         if (!workspace) {
             return Promise.resolve({ data: [] });
@@ -672,7 +716,7 @@ export class ConnectionEventHandler {
     private last_inlay_hints = new Map<string, InlayHint[]>();
 
     async onInlayHint(params: InlayHintParams, token?: CancellationToken): Promise<InlayHint[]> {
-        const workspace = this.workspaceForUri(params.textDocument.uri);
+        const workspace = this.workspaceForUri(params.textDocument.uri, Use.PASSIVE);
 
         if (!workspace) {
             return Promise.resolve([]);

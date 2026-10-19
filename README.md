@@ -45,6 +45,15 @@ no workspace file is needed.
   belongs to the nearest enclosing project.
 - A workspace file listing each project as a folder keeps working as it did.
 
+Each project's analyser is a compiler process holding the whole project in
+memory, so the extension keeps at most `ghul.analysers.max` of them running
+(four unless you change it). A project with a visible editor always keeps its
+analyser, so more than that can run when more are visible. Opening a file in a
+project that is not running starts it when you use the file, or when it is
+visible; tabs restored in the background start nothing. Where starting one would
+go over the limit, the project you used least recently is stopped, and starts
+again the next time you use it. The status bar tooltip lists what is running.
+
 ## Settings
 
 How the extension behaves is configured through ordinary editor settings, so

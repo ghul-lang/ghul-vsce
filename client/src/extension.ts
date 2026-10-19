@@ -3,6 +3,8 @@
 import { log } from 'console';
 import * as path from 'path';
 
+import { appendFileSync } from 'fs';
+
 import { ExtensionContext, StatusBarAlignment, window } from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 
@@ -203,12 +205,25 @@ export function activate(context: ExtensionContext) {
 			: `${milliseconds.toFixed(0)} ms`;
 	}
 
-	function describeMetrics(): string {
-		if (metrics.size === 0) {
-			return "ghūl language support";
+	// What the server last said about which projects have an analyser running.
+	let pool: { started: string[], cap: number, pinned: string[] } | null = null;
+
+	function describePool(): string {
+		if (!pool) {
+			return "";
 		}
 
-		return [...metrics.values()]
+		const lines = pool.started.map(root => `  ${root}${pool!.pinned.includes(root) ? " (visible)" : ""}`);
+
+		return `analysers: ${pool.started.length} of ${pool.cap}${lines.length ? "\n" + lines.join("\n") : ""}\n\n`;
+	}
+
+	function describeMetrics(): string {
+		if (metrics.size === 0) {
+			return pool ? describePool().trimEnd() : "ghūl language support";
+		}
+
+		return describePool() + [...metrics.values()]
 			.map(m =>
 				`${m.workspace}\n` +
 				`edit analysis: ${m.edit_ms == null ? "—" : formatDuration(m.edit_ms)}\n` +
@@ -314,9 +329,54 @@ export function activate(context: ExtensionContext) {
 	client.start().then(() => {
 		log("client started...");
 
+		// Measuring aid, with the server's request trace: which editors are
+		// visible, and which is active, as they change.
+		const trace_path = process.env.GHUL_REQUEST_TRACE;
+
+		if (trace_path) {
+			const record = (kind: string) => {
+				try {
+					appendFileSync(trace_path, JSON.stringify({
+						t: Date.now(),
+						kind,
+						visible: window.visibleTextEditors.map(e => e.document.uri.toString()),
+						active: window.activeTextEditor?.document.uri.toString() ?? null,
+					}) + '\n');
+				} catch {
+					// a measuring aid never gets in the way
+				}
+			};
+
+			record('client:start');
+
+			context.subscriptions.push(
+				window.onDidChangeVisibleTextEditors(() => record('client:visible')),
+				window.onDidChangeActiveTextEditor(() => record('client:active'))
+			);
+		}
+
 		context.subscriptions.push(
-			client.onNotification('ghul/metrics', (m: AnalysisMetrics) => setMetrics(m))
+			client.onNotification('ghul/metrics', (m: AnalysisMetrics) => setMetrics(m)),
+			client.onNotification('ghul/pool', (p: { started: string[], cap: number, pinned: string[] }) => {
+				pool = p;
+				render();
+			})
 		);
+
+		// The editors the user can see, so the server keeps their projects'
+		// analysers running and starts one for a visible document without
+		// starting one for every tab restored in the background.
+		const sendVisibleDocuments = () => {
+			client.sendNotification('ghul/visibleDocuments', {
+				uris: window.visibleTextEditors
+					.filter(editor => editor.document.languageId === 'ghul')
+					.map(editor => editor.document.uri.toString())
+			});
+		};
+
+		sendVisibleDocuments();
+
+		context.subscriptions.push(window.onDidChangeVisibleTextEditors(sendVisibleDocuments));
 
 		// Push the disposable to the context's subscriptions so that the 
 		// client can be deactivated on extension deactivation

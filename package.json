@@ -88,6 +88,13 @@
           "default": null,
           "scope": "resource",
           "markdownDescription": "Show a `∘︎` inlay hint at every statement terminator the parser inferred (left off at end of line). One hint per inferred boundary, so this is dense — pair it with `editor.inlayHints.enabled: offUnlessPressed`. Unset keeps the compiler default, which is off. Changing this restarts the analyser."
+        },
+        "ghul.analysers.max": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "scope": "window",
+          "markdownDescription": "The most ghūl analysers to keep running at once, one for each project you are working in. A project with a visible editor always keeps its analyser, so more than this can run when more are visible. The least recently used project is stopped first, and starts again the next time you use it."
         }
       }
     },
