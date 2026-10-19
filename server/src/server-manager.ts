@@ -1,5 +1,6 @@
 import { writeFileSync } from 'fs';
 import { quote } from 'shell-quote';
+import { toResponseFileText } from './response-file-text';
 
 import {
 	spawn,
@@ -250,7 +251,7 @@ export class ServerManager {
 		// because the compiler resolves an @path relative to its working
 		// directory, which is the workspace root rather than here.
 		const rsp_path = this.analysis_response_file();
-		writeFileSync(rsp_path, quote(this.ghul_config.arguments));
+		writeFileSync(rsp_path, toResponseFileText(this.ghul_config.arguments));
 
 		log(`compiler is "${quote(ghul_compiler)}"`);
 
