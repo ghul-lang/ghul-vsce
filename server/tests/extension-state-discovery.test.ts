@@ -85,7 +85,7 @@ describe('ExtensionState discovery', () => {
 
         state.addFolder(root);
 
-        expect(state.getWorkspaceForUri(uri('cli/src/main.ghul'), false)).toBeNull();
+        expect(state.getWorkspaceForUri(uri('cli/src/main.ghul'), Use.WATCH)).toBeNull();
         expect(state.allWorkspaces()).toEqual([]);
     });
 
