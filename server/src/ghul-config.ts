@@ -6,6 +6,7 @@ import { parseString as parseXmlString } from 'xml2js';
 import { log } from './log';
 import { spawnSync } from 'child_process';
 import { parse, quote } from 'shell-quote';
+import { findDotNetToolsManifest } from './restore-dotnet-tools';
 
 export interface GhulConfig {
 	block: boolean,
@@ -440,9 +441,11 @@ export function getGhulConfig(
 	if (!compiler && manifest_compiler !== undefined) {
 		compiler = manifest_compiler ?? undefined;
 	} else if (!compiler) {
-		if (existsSync(workspace + "/.config/dotnet-tools.json")) {
+		const tools_manifest = findDotNetToolsManifest(workspace);
+
+		if (tools_manifest) {
 			try {
-				let buffer = ('' + readFileSync(workspace + "/.config/dotnet-tools.json", "utf-8")).replace(/^\uFEFF/, '');
+				let buffer = ('' + readFileSync(tools_manifest, "utf-8")).replace(/^\uFEFF/, '');
 
 				let toolConfig = JSON.parse(buffer) as DotNetToolsJson;
 

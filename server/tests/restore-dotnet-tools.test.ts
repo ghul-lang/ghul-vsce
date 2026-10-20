@@ -3,7 +3,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFile } from 'child_process';
 
-import { restoreDotNetTools } from '../src/restore-dotnet-tools';
+import { findDotNetToolsManifest, restoreDotNetTools } from '../src/restore-dotnet-tools';
 
 jest.mock('child_process', () => ({
     ...jest.requireActual('child_process'),
@@ -51,5 +51,58 @@ describe('restoreDotNetTools', () => {
         );
 
         await expect(restoreDotNetTools(workspace)).resolves.toContain('no such tool');
+    });
+});
+
+describe('restoreDotNetTools with the manifest in an ancestor directory', () => {
+    let root: string;
+    let project: string;
+
+    beforeEach(() => {
+        root = mkdtempSync(join(tmpdir(), 'ghul-vsce-tools-up-'));
+        project = join(root, 'cli');
+        mkdirSync(project);
+        (execFile as unknown as jest.Mock).mockClear();
+    });
+
+    afterEach(() => {
+        try { rmSync(root, { recursive: true, force: true }); } catch { /* swallow */ }
+    });
+
+    it('restores from the repository root when the project is in a subfolder', async () => {
+        mkdirSync(join(root, '.config'));
+        writeFileSync(join(root, '.config/dotnet-tools.json'), '{"version":1}');
+
+        await expect(restoreDotNetTools(project)).resolves.toBeNull();
+
+        expect(execFile).toHaveBeenCalledWith(
+            'dotnet',
+            ['tool', 'restore'],
+            { cwd: root },
+            expect.any(Function)
+        );
+    });
+
+    it('prefers the nearest manifest', async () => {
+        mkdirSync(join(root, '.config'));
+        writeFileSync(join(root, '.config/dotnet-tools.json'), '{"version":1}');
+        mkdirSync(join(project, '.config'));
+        writeFileSync(join(project, '.config/dotnet-tools.json'), '{"version":1}');
+
+        await restoreDotNetTools(project);
+
+        expect(execFile).toHaveBeenCalledWith(
+            'dotnet',
+            ['tool', 'restore'],
+            { cwd: project },
+            expect.any(Function)
+        );
+    });
+
+    it('finds the manifest by walking up', () => {
+        mkdirSync(join(root, '.config'));
+        writeFileSync(join(root, '.config/dotnet-tools.json'), '{"version":1}');
+
+        expect(findDotNetToolsManifest(project)).toBe(join(root, '.config', 'dotnet-tools.json'));
     });
 });
