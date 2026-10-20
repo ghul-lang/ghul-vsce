@@ -41,7 +41,8 @@ export function restoreDotNetTools(workspace: string, dotnet: string = "dotnet")
 
     const root = dirname(dirname(manifest));
 
-    log(`restoring .NET tools from ${manifest}...`);
+    log("restoring .NET tools...");
+    log(`using ${manifest}`);
 
     return new Promise(resolve => {
         execFile(dotnet, ["tool", "restore"], { cwd: root }, (error, stdout) => {
