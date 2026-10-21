@@ -41,6 +41,13 @@
         "path": "./syntaxes/ghul.tmLanguage.json"
       }
     ],
+    "commands": [
+      {
+        "command": "ghul.showAnalysisStatus",
+        "title": "Show Analysis Status",
+        "category": "ghūl"
+      }
+    ],
     "configuration": {
       "title": "ghūl",
       "properties": {

@@ -5,7 +5,7 @@ import * as path from 'path';
 
 import { appendFileSync } from 'fs';
 
-import { ExtensionContext, StatusBarAlignment, window } from 'vscode';
+import { commands, ExtensionContext, MarkdownString, QuickPickItem, StatusBarAlignment, window } from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 
 // Mirrors the payload of the server's ghul/metrics notification
@@ -191,8 +191,9 @@ export function activate(context: ExtensionContext) {
 	// The two numbers that answer "is the language support keeping up?": how
 	// long the analyser takes to digest an edit, and how long a full check of
 	// the project takes. Both are smoothed server-side, so these are settled
-	// figures rather than ones that jump on every keystroke. They live in the
-	// tooltip: worth having to hand, not worth standing width in the bar for.
+	// figures rather than ones that jump on every keystroke. They reach the
+	// user through the tooltip's one-line summary and the quick pick's full
+	// record, never as width in the bar itself.
 	//
 	// Keyed per workspace folder for the same reason progress is keyed per
 	// token: in a multi-root workspace each folder has its own compiler, and
@@ -205,32 +206,202 @@ export function activate(context: ExtensionContext) {
 			: `${milliseconds.toFixed(0)} ms`;
 	}
 
+	// The same figures as formatDuration, without the space: on the tooltip's
+	// one line per analyser, `12ms/240ms` keeps the pair readable as a pair.
+	function compactDuration(milliseconds: number): string {
+		return formatDuration(milliseconds).replace(' ', '');
+	}
+
 	// What the server last said about which projects have an analyser running.
 	let pool: { started: string[], cap: number, pinned: string[] } | null = null;
 
-	function describePool(): string {
-		if (!pool) {
-			return "";
+	// Every root the client knows an analyser by, in a stable order: the pool's
+	// started list first (it is the authority on what runs), then any workspace
+	// that has reported metrics without appearing in it.
+	function knownRoots(): string[] {
+		const roots = pool ? [...pool.started] : [];
+
+		for (const root of metrics.keys()) {
+			if (!roots.includes(root)) {
+				roots.push(root);
+			}
 		}
 
-		const lines = pool.started.map(root => `  ${root}${pool!.pinned.includes(root) ? " (visible)" : ""}`);
-
-		return `analysers: ${pool.started.length} of ${pool.cap}${lines.length ? "\n" + lines.join("\n") : ""}\n\n`;
+		return roots;
 	}
 
-	function describeMetrics(): string {
-		if (metrics.size === 0) {
-			return pool ? describePool().trimEnd() : "ghūl language support";
+	// A root by its folder name alone. A tooltip sizes itself to its widest
+	// line, so full paths would set the width of everything else in it; the
+	// quick pick the item opens on click carries the full paths. Two roots
+	// sharing a folder name take their parent folder too, so they stay
+	// distinguishable.
+	function shortName(root: string, all: string[]): string {
+		const base = path.basename(root) || root;
+		const clashes = all.filter(other => (path.basename(other) || other) == base);
+
+		if (clashes.length > 1) {
+			return `${path.basename(path.dirname(root))}/${base}`;
 		}
 
-		return describePool() + [...metrics.values()]
-			.map(m =>
-				`${m.workspace}\n` +
-				`edit analysis: ${m.edit_ms == null ? "—" : formatDuration(m.edit_ms)}\n` +
-				`full analysis: ${m.compile_ms == null ? "—" : formatDuration(m.compile_ms)}\n` +
-				describeIncremental(m))
-			.join("\n\n");
+		return base;
 	}
+
+	// A run of block glyphs reads as proportion in any font, and the fenced
+	// code block the tooltip renders them in is monospaced, so they are
+	// accurately proportional too. Denser glyphs mark the cheaper incremental
+	// paths: a body re-walk (solid) reuses the most retained state, an
+	// interface incremental (medium) a little less, a full rebuild (light)
+	// none.
+	function bar(filled: number, total: number, width: number): string {
+		const cells = total > 0 ? Math.round((filled / total) * width) : 0;
+
+		return '█'.repeat(Math.min(Math.max(cells, 0), width)) + '░'.repeat(Math.max(width - cells, 0));
+	}
+
+	// One bar, three segments. Rounding three fractions independently can
+	// over- or under-fill the bar by a cell; the difference is taken from (or
+	// given to) the largest segment, where one cell is the smallest share.
+	function stackedBar(fast: number, medium: number, slow: number, width: number): string {
+		const total = fast + medium + slow;
+
+		if (total === 0) {
+			return '░'.repeat(width);
+		}
+
+		const segments = [
+			{ count: Math.round((fast / total) * width), glyph: '█' },
+			{ count: Math.round((medium / total) * width), glyph: '▓' },
+			{ count: Math.round((slow / total) * width), glyph: '░' }
+		];
+
+		const largest = segments.reduce((a, b) => a.count >= b.count ? a : b);
+		largest.count += width - segments.reduce((sum, s) => sum + s.count, 0);
+
+		return segments.map(s => s.glyph.repeat(Math.max(s.count, 0))).join('');
+	}
+
+	// The one-line form of one analyser's numbers, for the tooltip. The bars
+	// carry the shape — edit time as a fraction of full analysis, and the
+	// incremental split by path — while the figures beside them keep the
+	// absolute values: a bar says "small", only the number says how small.
+	function describeAnalyser(m: AnalysisMetrics | undefined): string {
+		if (!m) {
+			return 'starting';
+		}
+
+		let edit: string;
+
+		if (m.edit_ms != null && m.compile_ms != null) {
+			edit = `edit ${bar(m.edit_ms, m.compile_ms, 8)} ${compactDuration(m.edit_ms)}/${compactDuration(m.compile_ms)}`;
+		} else {
+			edit = `edit ${m.edit_ms != null ? compactDuration(m.edit_ms) : '—'}/${m.compile_ms != null ? compactDuration(m.compile_ms) : '—'}`;
+		}
+
+		let incremental: string;
+
+		if (!m.incremental_requested) {
+			incremental = 'incr off';
+		} else if (!m.incremental || m.incremental.total === 0) {
+			incremental = 'incr on, no edits';
+		} else {
+			const { body_rewalk, interface_incremental, full_rebuild, total } = m.incremental;
+			const rate = Math.round(((body_rewalk + interface_incremental) / total) * 100);
+
+			incremental = `incr ${stackedBar(body_rewalk, interface_incremental, full_rebuild, 10)}`
+				+ ` ${String(rate).padStart(3)}% of ${total}`;
+
+			if (m.incremental.top_decline_reason) {
+				incremental += ` · ${m.incremental.top_decline_reason} ${m.incremental.top_decline_count}`;
+			}
+		}
+
+		return `${edit}  ${incremental}`;
+	}
+
+	// The whole tooltip: one fenced code block, so every line shares a
+	// monospace font and the bars align, with one line per analyser rather
+	// than the seven the full record takes. Everything the lines leave out —
+	// full paths, the per-path edit counts — is in the quick pick the item
+	// opens on click, so compacting the tooltip loses nothing permanently.
+	function describeMetrics(): MarkdownString {
+		const md = new MarkdownString();
+		const roots = knownRoots();
+
+		if (roots.length === 0 && !pool) {
+			md.appendText('ghūl language support');
+			return md;
+		}
+
+		const lines: string[] = [];
+
+		if (pool) {
+			lines.push(`analysers ${pool.started.length} of ${pool.cap}`);
+		}
+
+		const names = new Map(roots.map(root => [root, shortName(root, roots)]));
+		const widest = Math.max(...[...names.values()].map(name => name.length));
+
+		for (const root of roots) {
+			const name = names.get(root)!.padEnd(widest);
+			const visible = pool?.pinned.includes(root) ? ' · visible' : '';
+
+			lines.push(`${name}  ${describeAnalyser(metrics.get(root))}${visible}`);
+		}
+
+		md.appendCodeblock(lines.join('\n'), '');
+		return md;
+	}
+
+	// The click-through: the full record for every analyser, in the one place
+	// the workbench gives that can scroll. A quick pick costs nothing until
+	// opened, shows long paths without sizing anything else to them, and
+	// filters on its detail text, so a path fragment finds the analyser it
+	// belongs to.
+	async function showAnalysisStatus(): Promise<void> {
+		const roots = knownRoots();
+		const items: QuickPickItem[] = [];
+
+		if (pool) {
+			items.push({
+				label: `${pool.started.length} of ${pool.cap} analysers running`,
+				detail: 'the cap bounds simultaneous analysers; a project with a visible editor keeps its place'
+			});
+		}
+
+		if (roots.length === 0) {
+			items.push({ label: 'no analysers yet' });
+		}
+
+		for (const root of roots) {
+			const m = metrics.get(root);
+			const visible = pool?.pinned.includes(root) ?? false;
+
+			items.push({
+				label: shortName(root, roots),
+				description: m && (m.edit_ms != null || m.compile_ms != null)
+					? `edit ${m.edit_ms == null ? '—' : formatDuration(m.edit_ms)} · full ${m.compile_ms == null ? '—' : formatDuration(m.compile_ms)}`
+					: '',
+				detail: [
+					root + (visible ? ' — visible' : ''),
+					m
+						? `edit analysis: ${m.edit_ms == null ? '—' : formatDuration(m.edit_ms)}\n`
+							+ `full analysis: ${m.compile_ms == null ? '—' : formatDuration(m.compile_ms)}\n`
+							+ describeIncremental(m)
+						: 'no measurements yet'
+				].join('\n')
+			});
+		}
+
+		await window.showQuickPick(items, {
+			placeHolder: 'ghūl analysers — timings and incremental edit accounting',
+			matchOnDetail: true
+		});
+	}
+
+	const SHOW_STATUS_COMMAND = 'ghul.showAnalysisStatus';
+
+	context.subscriptions.push(commands.registerCommand(SHOW_STATUS_COMMAND, showAnalysisStatus));
+	statusBarItem.command = SHOW_STATUS_COMMAND;
 
 	// What the analyser did with the edits it was given, as against what it was
 	// asked to do with them. An edit served incrementally reuses the state the
@@ -238,13 +409,9 @@ export function activate(context: ExtensionContext) {
 	// on a large one is the difference between milliseconds and most of a
 	// second. Nothing else surfaces this, so a rate that has quietly gone to
 	// zero looks the same from outside as an analyser that has simply become
-	// slow — which is the question this line exists to answer.
-	//
-	// The reason is worth showing alongside the rate because it distinguishes
-	// the two ways of getting a low one: `not-eligible` for effectively every
-	// rebuild means the analyser is not attempting incremental analysis at all,
-	// where any other reason means it is attempting it and the edits are being
-	// refused on their merits.
+	// slow — which is the question this exists to answer. The full record with
+	// the per-path counts goes in the quick pick; the tooltip shows the rate,
+	// the split as a stacked bar, and the top decline reason.
 	function describeIncremental(m: AnalysisMetrics): string {
 		if (!m.incremental_requested) {
 			return "incremental analysis: off";

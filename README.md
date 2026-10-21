@@ -52,7 +52,10 @@ analyser, so more than that can run when more are visible. Opening a file in a
 project that is not running starts it when you use the file, or when it is
 visible; tabs restored in the background start nothing. Where starting one would
 go over the limit, the project you used least recently is stopped, and starts
-again the next time you use it. The status bar tooltip lists what is running.
+again the next time you use it. The status bar tooltip summarises what is
+running, with edit and full-analysis timings and how many edits took the
+incremental path; clicking the item opens a list with the full detail,
+including each project's path.
 
 ## Settings
 
