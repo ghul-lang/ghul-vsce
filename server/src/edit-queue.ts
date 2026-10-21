@@ -208,6 +208,8 @@ export class EditQueue {
         // starts its own from zero.
         this.incremental_stats = null;
         this.last_stats_request_at = 0;
+        this.memory_bytes = null;
+        this.last_memory_request_at = 0;
 
         // The analyser holds no retained text — a fresh one starts from
         // whatever the client sends it.
@@ -366,6 +368,7 @@ export class EditQueue {
 
         this.recordLatency('edit', this.send_start_time);
         this.requestStatsIfDue();
+        this.requestMemoryIfDue();
 
         if (milliseconds) {
             this.edit_timeout = milliseconds * 1.5;
@@ -431,6 +434,7 @@ export class EditQueue {
 
         this.recordLatency('compile', this.compile_start_time);
         this.requestStatsIfDue();
+        this.requestMemoryIfDue();
 
         if (milliseconds) {
             this.full_build_timeout = milliseconds * 1.5;
@@ -540,7 +544,8 @@ export class EditQueue {
             this.edit_latency_ms,
             this.compile_latency_ms,
             this.response_handler.incremental_analysis_requested,
-            this.incremental_stats
+            this.incremental_stats,
+            this.memory_bytes
         );
     }
 
@@ -551,6 +556,36 @@ export class EditQueue {
     // described the one that replaced it.
     private incremental_stats: IncrementalStats | null = null;
     private last_stats_request_at: number = 0;
+
+    // The bytes the analyser's process occupies, as of the last answer. Null
+    // until one arrives, when the analyser cannot report it, and after the
+    // compiler goes away.
+    private memory_bytes: number | null = null;
+    private last_memory_request_at: number = 0;
+
+    onMemoryUsageReceived(bytes: number) {
+        this.memory_bytes = bytes > 0 ? bytes : null;
+
+        this.reportMetrics();
+    }
+
+    // As requestStatsIfDue: asked for only where a compile has just finished.
+    // Reading the figure collects nothing, so it costs the analyser a syscall.
+    private requestMemoryIfDue() {
+        if (!this.response_handler.memory_usage_supported) {
+            return;
+        }
+
+        const now = Date.now();
+
+        if (now - this.last_memory_request_at < EditQueue.STATS_INTERVAL) {
+            return;
+        }
+
+        this.last_memory_request_at = now;
+
+        this.requester.sendMemoryUsageRequest();
+    }
 
     onStatsReceived(entries: StatEntry[]) {
         this.incremental_stats = summariseIncrementalStats(entries);

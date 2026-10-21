@@ -61,7 +61,36 @@ export const MAX_RESTART_ATTEMPTS = 5;
 const live_children = new Map<string, ChildProcess>();
 
 export class ServerManager {
-	child: ChildProcess;
+	private _child: ChildProcess;
+
+	// Told whenever the compiler process comes or goes, so a status display
+	// can drop an analyser the moment it dies.
+	on_process_change: (() => void) | null = null;
+
+	get child(): ChildProcess {
+		return this._child;
+	}
+
+	set child(value: ChildProcess) {
+		this._child = value;
+
+		try {
+			this.on_process_change?.();
+		} catch (e) {
+			log("process change listener failed: " + e);
+		}
+	}
+
+	// Whether a compiler process is running now: not one waiting to be
+	// needed after an idle exit, not one that crashed or never started.
+	isAlive(): boolean {
+		const running =
+			this.server_state == ServerState.Listening ||
+			this.server_state == ServerState.StartingUp;
+
+		return running && !!this._child && this._child.exitCode == null;
+	}
+
 	expecting_exit: boolean;
 	expecting_recycle: boolean;
 	expecting_idle_exit: boolean;

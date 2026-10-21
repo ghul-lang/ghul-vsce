@@ -24,6 +24,9 @@ export interface AnalysisMetrics {
     // What the analyser's own counters say it did, or null before it has been
     // asked or if it answered nothing.
     incremental: IncrementalStats | null;
+    // Bytes of memory the analyser's process occupies, or null where it cannot
+    // say. Not the managed heap: the resident or working set.
+    memory_bytes: number | null;
 }
 
 // Rate at which measurements reach the status bar. Compiles complete far more
@@ -55,14 +58,16 @@ export class MetricsReporter {
         edit_ms: number | null,
         compile_ms: number | null,
         incremental_requested: boolean = false,
-        incremental: IncrementalStats | null = null
+        incremental: IncrementalStats | null = null,
+        memory_bytes: number | null = null
     ) {
         this.latest = {
             workspace: this.workspace_root,
             edit_ms,
             compile_ms,
             incremental_requested,
-            incremental
+            incremental,
+            memory_bytes
         };
 
         if (this.timer) {

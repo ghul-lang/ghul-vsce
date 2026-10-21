@@ -213,6 +213,11 @@ interface StatsResponse {
     entries: StatEntry[];
 }
 
+interface MemoryUsageResponse {
+    kind: "memory_usage";
+    bytes: number;
+}
+
 interface ErrorResponse {
     kind: "error";
     error_kind: string;
@@ -525,6 +530,11 @@ export class ResponseHandler {
     // then, so nothing is sent to a compiler that has not said what it is.
     stats_supported: boolean = false;
 
+    // Whether the analyser answers `memory_usage`. Gated on its own
+    // capability: an analyser that does not know the command answers with an
+    // error frame, which aborts it.
+    memory_usage_supported: boolean = false;
+
     // Set from the analyser's advertised capabilities on LISTEN. A client
     // must not send edit_delta without seeing this: unknown JSON members are
     // ignored, so an older analyser would read a delta-fielded edit as empty
@@ -720,6 +730,8 @@ export class ResponseHandler {
         // still, so advertising it is a sound lower bound on support for both.
         this.stats_supported = capabilities.includes("incremental-analysis");
 
+        this.memory_usage_supported = capabilities.includes("memory-usage");
+
         this.edit_deltas_supported = capabilities.includes("edit-deltas");
 
         this.compile_abort_supported = capabilities.includes("compile-abort");
@@ -806,6 +818,10 @@ export class ResponseHandler {
 
     handleStats(response: StatsResponse) {
         this.edit_queue.onStatsReceived(response.entries ?? []);
+    }
+
+    handleMemoryUsage(response: MemoryUsageResponse) {
+        this.edit_queue.onMemoryUsageReceived(response.bytes);
     }
 
     // The analyser could not parse a request — typically a newer client

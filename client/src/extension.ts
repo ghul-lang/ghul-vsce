@@ -5,28 +5,12 @@ import * as path from 'path';
 
 import { appendFileSync } from 'fs';
 
-import { ExtensionContext, StatusBarAlignment, window } from 'vscode';
+import { ExtensionContext, StatusBarAlignment, commands, window, workspace } from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 
-// Mirrors the payload of the server's ghul/metrics notification
-// (server/src/metrics-reporter.ts). Durations are in milliseconds, and null
-// until the analyser has completed one of that kind of run.
-interface IncrementalStats {
-	body_rewalk: number;
-	interface_incremental: number;
-	full_rebuild: number;
-	total: number;
-	top_decline_reason: string | null;
-	top_decline_count: number;
-}
-
-interface AnalysisMetrics {
-	workspace: string;
-	edit_ms: number | null;
-	compile_ms: number | null;
-	incremental_requested: boolean;
-	incremental: IncrementalStats | null;
-}
+import {
+	AnalysisMetrics, PoolState, describeDetails, describeTooltip, runningRoots
+} from './status-tooltip';
 
 export function activate(context: ExtensionContext) {
 	log("client entry point...")
@@ -188,86 +172,22 @@ export function activate(context: ExtensionContext) {
 		}, COMPLETED_HOLD_MS));
 	}
 
-	// The two numbers that answer "is the language support keeping up?": how
-	// long the analyser takes to digest an edit, and how long a full check of
-	// the project takes. Both are smoothed server-side, so these are settled
-	// figures rather than ones that jump on every keystroke. They live in the
-	// tooltip: worth having to hand, not worth standing width in the bar for.
-	//
-	// Keyed per workspace folder for the same reason progress is keyed per
-	// token: in a multi-root workspace each folder has its own compiler, and
-	// its own latency.
+	// What the analysers are doing, for the tooltip: each running one, with its
+	// memory, latencies and the share of edits served incrementally. Keyed per
+	// workspace folder for the same reason progress is keyed per token: in a
+	// multi-root workspace each folder has its own compiler. The full detail
+	// opens on click.
 	let metrics = new Map<string, AnalysisMetrics>();
 
-	function formatDuration(milliseconds: number): string {
-		return milliseconds >= 1000
-			? `${(milliseconds / 1000).toFixed(1)} s`
-			: `${milliseconds.toFixed(0)} ms`;
-	}
-
 	// What the server last said about which projects have an analyser running.
-	let pool: { started: string[], cap: number, pinned: string[] } | null = null;
+	let pool: PoolState | null = null;
 
-	function describePool(): string {
-		if (!pool) {
-			return "";
-		}
-
-		const lines = pool.started.map(root => `  ${root}${pool!.pinned.includes(root) ? " (visible)" : ""}`);
-
-		return `analysers: ${pool.started.length} of ${pool.cap}${lines.length ? "\n" + lines.join("\n") : ""}\n\n`;
+	function workspaceFolders(): string[] {
+		return (workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
 	}
 
 	function describeMetrics(): string {
-		if (metrics.size === 0) {
-			return pool ? describePool().trimEnd() : "ghūl language support";
-		}
-
-		return describePool() + [...metrics.values()]
-			.map(m =>
-				`${m.workspace}\n` +
-				`edit analysis: ${m.edit_ms == null ? "—" : formatDuration(m.edit_ms)}\n` +
-				`full analysis: ${m.compile_ms == null ? "—" : formatDuration(m.compile_ms)}\n` +
-				describeIncremental(m))
-			.join("\n\n");
-	}
-
-	// What the analyser did with the edits it was given, as against what it was
-	// asked to do with them. An edit served incrementally reuses the state the
-	// analyser already holds; one that isn't rebuilds the whole project, which
-	// on a large one is the difference between milliseconds and most of a
-	// second. Nothing else surfaces this, so a rate that has quietly gone to
-	// zero looks the same from outside as an analyser that has simply become
-	// slow — which is the question this line exists to answer.
-	//
-	// The reason is worth showing alongside the rate because it distinguishes
-	// the two ways of getting a low one: `not-eligible` for effectively every
-	// rebuild means the analyser is not attempting incremental analysis at all,
-	// where any other reason means it is attempting it and the edits are being
-	// refused on their merits.
-	function describeIncremental(m: AnalysisMetrics): string {
-		if (!m.incremental_requested) {
-			return "incremental analysis: off";
-		}
-
-		if (!m.incremental || m.incremental.total === 0) {
-			return "incremental analysis: on, no edits yet";
-		}
-
-		const { body_rewalk, interface_incremental, full_rebuild, total } = m.incremental;
-		const rate = Math.round(((body_rewalk + interface_incremental) / total) * 100);
-
-		let described =
-			`incremental analysis: on, ${rate}% of ${total} edit${total === 1 ? "" : "s"}\n` +
-			`  body re-walk: ${body_rewalk}\n` +
-			`  interface: ${interface_incremental}\n` +
-			`  full rebuild: ${full_rebuild}`;
-
-		if (m.incremental.top_decline_reason) {
-			described += `\n  mostly declined: ${m.incremental.top_decline_reason} (${m.incremental.top_decline_count})`;
-		}
-
-		return described;
+		return describeTooltip(pool, metrics, workspaceFolders());
 	}
 
 	function setMetrics(m: AnalysisMetrics) {
@@ -275,6 +195,35 @@ export function activate(context: ExtensionContext) {
 		metrics.set(m.workspace, m);
 		render();
 	}
+
+	// An analyser that has gone has nothing left to report: its figures
+	// would be shown against whichever one replaces it.
+	function setPool(p: PoolState) {
+		pool = p;
+
+		const running = new Set(runningRoots(p));
+
+		for (const root of Array.from(metrics.keys())) {
+			if (!running.has(root)) {
+				metrics.delete(root);
+			}
+		}
+
+		render();
+	}
+
+	statusBarItem.command = 'ghul.showAnalysers';
+
+	context.subscriptions.push(
+		commands.registerCommand('ghul.showAnalysers', async () => {
+			const document = await workspace.openTextDocument({
+				content: describeDetails(pool, metrics, workspaceFolders()),
+				language: 'plaintext'
+			});
+
+			await window.showTextDocument(document, { preview: true });
+		})
+	);
 
 	// Put the item up before the server has said anything. Activation already
 	// means this workspace contains ghūl code, and an item that only appeared
@@ -357,10 +306,7 @@ export function activate(context: ExtensionContext) {
 
 		context.subscriptions.push(
 			client.onNotification('ghul/metrics', (m: AnalysisMetrics) => setMetrics(m)),
-			client.onNotification('ghul/pool', (p: { started: string[], cap: number, pinned: string[] }) => {
-				pool = p;
-				render();
-			})
+			client.onNotification('ghul/pool', (p: PoolState) => setPool(p))
 		);
 
 		// The editors the user can see, so the server keeps their projects'
