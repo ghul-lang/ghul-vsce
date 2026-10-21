@@ -6,7 +6,7 @@ import { log } from './log';
 const COMMAND = "dotnet";
 
 // GenerateGhulResponseFile ships in ghul.runtime 14.3.0+'s build targets
-// (degory/ghul#2132) and writes what the build resolved — the compiler options
+// (ghul-lang/ghul#2132) and writes what the build resolved — the compiler options
 // with their conditions applied, and one -a flag per reference — as
 // response-file text, which is the form the compiler wants anyway. It replaces
 // GenerateAssembliesJson and GenerateGhulOptionsJson, which carried the same

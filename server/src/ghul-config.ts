@@ -270,12 +270,12 @@ export function getGhulConfig(
 	// item's enclosing ItemGroup, a property-form GhulOptions, or a $(...)
 	// reference inside one. Either the response file or, on a runtime too old
 	// to write one, .ghul-options.json (ghul.runtime 14.1.0+'s
-	// GenerateGhulOptionsJson target, see degory/ghul#2090) supplies them.
+	// GenerateGhulOptionsJson target, see ghul-lang/ghul#2090) supplies them.
 	// Older still and there is neither, so the XML fallback runs as before.
 	let resolved_options = false;
 	let missing_assemblies: string[] = [];
 
-	// ghul.runtime 14.3.0+'s GenerateGhulResponseFile (degory/ghul#2132)
+	// ghul.runtime 14.3.0+'s GenerateGhulResponseFile (ghul-lang/ghul#2132)
 	// carries the resolved options and the resolved references together, as
 	// response-file text. Where it has been written it is the whole answer,
 	// and neither of the two JSON files it replaced is consulted.

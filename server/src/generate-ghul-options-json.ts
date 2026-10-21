@@ -5,7 +5,7 @@ import { log } from './log';
 const COMMAND = "dotnet";
 
 // GenerateGhulOptionsJson ships in ghul.runtime 14.1.0+'s build targets
-// (degory/ghul#2090) and writes the compiler flags the build actually
+// (ghul-lang/ghul#2090) and writes the compiler flags the build actually
 // resolved — conditions applied, properties evaluated — to
 // .ghul-options.json. As with GenerateAssembliesJson, an explicit -t: stops
 // short of CoreCompile: nothing here compiles the analysed project.
