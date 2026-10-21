@@ -29,6 +29,7 @@ describe('MetricsReporter', () => {
             compile_ms: null,
             incremental_requested: false,
             incremental: null,
+            memory_bytes: null,
         });
     });
 
@@ -57,6 +58,7 @@ describe('MetricsReporter', () => {
             compile_ms: 900,
             incremental_requested: false,
             incremental: null,
+            memory_bytes: null,
         });
     });
 

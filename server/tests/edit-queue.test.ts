@@ -16,6 +16,7 @@ class RecordingRequester {
     sendFullCompileRequestCalls = 0;
     sendHeapCheckRequestCalls = 0;
     sendStatsRequestCalls = 0;
+    sendMemoryUsageRequestCalls = 0;
 
     // Mirrors the real Requester field the queue flips once a compile
     // round-trip completes; starts false as on a fresh compiler child.
@@ -35,6 +36,9 @@ class RecordingRequester {
     }
     sendStatsRequest() {
         this.sendStatsRequestCalls += 1;
+    }
+    sendMemoryUsageRequest() {
+        this.sendMemoryUsageRequestCalls += 1;
     }
 }
 
@@ -772,7 +776,7 @@ describe('EditQueue reporting', () => {
         typeOneEdit('file:///a.ghul', 'u', 100);
 
         expect(queue.edit_latency_ms).toBe(100);
-        expect(metrics.report).toHaveBeenLastCalledWith(100, null, false, null);
+        expect(metrics.report).toHaveBeenLastCalledWith(100, null, false, null, null);
     });
 
     it('smooths later measurements so a single slow compile does not dominate', () => {
@@ -802,7 +806,7 @@ describe('EditQueue reporting', () => {
 
         expect(queue.edit_latency_ms).toBe(40);
         expect(queue.compile_latency_ms).toBe(2000);
-        expect(metrics.report).toHaveBeenLastCalledWith(40, 2000, false, null);
+        expect(metrics.report).toHaveBeenLastCalledWith(40, 2000, false, null, null);
     });
 
     it('ignores a completion with no matching send', () => {
@@ -925,7 +929,8 @@ describe('EditQueue incremental statistics', () => {
                 full_rebuild: 1,
                 total: 5,
                 top_decline_reason: 'not-eligible',
-            }));
+            }),
+            null);
     });
 
     it('drops the counters when the compiler goes away', () => {
@@ -940,7 +945,7 @@ describe('EditQueue incremental statistics', () => {
         metrics.report.mockClear();
         queue.onStatsReceived([]);
 
-        expect(metrics.report).toHaveBeenLastCalledWith(null, null, true, expect.objectContaining({ total: 0 }));
+        expect(metrics.report).toHaveBeenLastCalledWith(null, null, true, expect.objectContaining({ total: 0 }), null);
     });
 });
 
@@ -1152,5 +1157,91 @@ describe('EditQueue superseding a full compile', () => {
         jest.advanceTimersByTime(queue.edit_timeout);
 
         expect(recorder.sendDocumentsCalls).toHaveLength(2);
+    });
+});
+
+describe('EditQueue memory usage', () => {
+    let recorder: RecordingRequester;
+    let responseHandler: ResponseHandler;
+    let metrics: { report: jest.Mock };
+    let queue: EditQueue;
+
+    beforeEach(() => {
+        jest.useFakeTimers();
+
+        responseHandler = {
+            rejectAllAndThrow: (message: string) => { throw message; },
+            incremental_analysis_requested: true,
+            memory_usage_supported: true,
+        } as unknown as ResponseHandler;
+
+        metrics = { report: jest.fn() };
+        recorder = new RecordingRequester();
+        queue = new EditQueue(
+            recorder as unknown as Requester,
+            responseHandler,
+            new Watchdog(10000, () => {}),
+            { report: jest.fn(), end: jest.fn() } as unknown as ActivityProgress,
+            metrics as unknown as MetricsReporter
+        );
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+    });
+
+    function compileOnce(text: string) {
+        queue.start([{ uri: 'file:///a.ghul', source: text }]);
+        queue.onPartialCompileDone(10);
+    }
+
+    it('asks for the memory once a compile has completed, and not again within the interval', () => {
+        queue.reset();
+        compileOnce('t');
+        compileOnce('tt');
+
+        expect(recorder.sendMemoryUsageRequestCalls).toBe(1);
+
+        jest.advanceTimersByTime(EditQueue.STATS_INTERVAL);
+        compileOnce('ttt');
+
+        expect(recorder.sendMemoryUsageRequestCalls).toBe(2);
+    });
+
+    it('asks nothing of an analyser that does not advertise it', () => {
+        (responseHandler as unknown as { memory_usage_supported: boolean }).memory_usage_supported = false;
+
+        queue.reset();
+        compileOnce('t');
+
+        expect(recorder.sendMemoryUsageRequestCalls).toBe(0);
+    });
+
+    it('reports the figure with the metrics', () => {
+        queue.reset();
+        queue.onMemoryUsageReceived(750 * 1024 * 1024);
+
+        const call = metrics.report.mock.calls[metrics.report.mock.calls.length - 1];
+
+        expect(call[call.length - 1]).toBe(750 * 1024 * 1024);
+    });
+
+    it('reports nothing for an analyser that answers 0', () => {
+        queue.reset();
+        queue.onMemoryUsageReceived(0);
+
+        const call = metrics.report.mock.calls[metrics.report.mock.calls.length - 1];
+
+        expect(call[call.length - 1]).toBeNull();
+    });
+
+    it('forgets the figure when the compiler goes away', () => {
+        queue.onMemoryUsageReceived(1024);
+        queue.reset();
+        queue.onStatsReceived([]);
+
+        const call = metrics.report.mock.calls[metrics.report.mock.calls.length - 1];
+
+        expect(call[call.length - 1]).toBeNull();
     });
 });

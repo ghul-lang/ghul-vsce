@@ -200,6 +200,7 @@ export class ExtensionState {
 
         context.client_supports_configuration = this.client_supports_configuration;
         context.response_handler.client_supports_refresh = this.client_supports_refresh;
+        context.server_manager.on_process_change = () => this.scheduleAnnouncePool();
 
         this.workspaces.set(workspace_root, context);
 
@@ -448,10 +449,31 @@ export class ExtensionState {
         return this.visible === null || this.visible.has(this.normalise(uri));
     }
 
-    // Tells the client what runs, for its status bar.
+    // A compiler coming or going changes what the status bar should list, but
+    // not often enough, or at moments distinct enough, to announce each one.
+    private announce_pending: NodeJS.Timeout | null = null;
+
+    private scheduleAnnouncePool() {
+        if (this.announce_pending) {
+            return;
+        }
+
+        this.announce_pending = setTimeout(() => {
+            this.announce_pending = null;
+            this.announcePool();
+        }, 100);
+
+        this.announce_pending.unref?.();
+    }
+
+    // Tells the client what runs, for its status bar. `started` is every
+    // workspace held; `running` is those with a compiler process alive now.
     private announcePool() {
         this.connection?.sendNotification?.('ghul/pool', {
             started: Array.from(this.workspaces.keys()),
+            running: Array.from(this.workspaces.entries())
+                .filter(([_, workspace]) => workspace.server_manager.isAlive())
+                .map(([root, _]) => root),
             cap: this.pool.cap,
             pinned: Array.from(this.workspaces.keys()).filter(root => this.pool.isPinned(root))
         });

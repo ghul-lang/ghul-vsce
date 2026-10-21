@@ -15,6 +15,7 @@ jest.mock('../src/workspace-context', () => ({
             boundary_excludes: [] as string[],
             client_supports_configuration: false,
             response_handler: {},
+            server_manager: { isAlive: () => context.started },
             claimsSourceFile: () => true,
             initializeDetached: jest.fn(() => { context.started = true; }),
             reinitialize: jest.fn(),

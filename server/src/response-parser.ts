@@ -147,6 +147,10 @@ export class ResponseParser {
             this.response_handler.handleStats(message);
             break;
 
+        case "memory_usage":
+            this.response_handler.handleMemoryUsage(message);
+            break;
+
         case "error":
             this.response_handler.handleError(message);
             break;

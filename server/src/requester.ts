@@ -577,6 +577,10 @@ export class Requester {
         this.send({ kind: "stats" });
     }
 
+    sendMemoryUsageRequest() {
+        this.send({ kind: "memory_usage" });
+    }
+
     sendRestart() {
         if (this.analysed) {
             this.watchdog.startWatchdogIfNotRunning();
