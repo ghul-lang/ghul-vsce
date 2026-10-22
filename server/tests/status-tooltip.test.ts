@@ -50,8 +50,35 @@ describe('describeTooltip', () => {
         const map = new Map([['/w/a', metrics('/w/a')], ['/w/c', metrics('/w/c', { incremental: null })]]);
 
         expect(describeTooltip(pool, map, ['/w'])).toBe(
-            '1/4  a  0.75GB  edit 20ms / full 60ms  incr 75%\n' +
-            '2/4  c  0.75GB  edit 20ms / full 60ms'
+            'a:\n' +
+            '0.75GB / 20ms edit / 60ms full / 75% incremental\n' +
+            '\n' +
+            'c:\n' +
+            '0.75GB / 20ms edit / 60ms full'
+        );
+    });
+
+    it('lists the most recently used analyser first, never-used ones last', () => {
+        const withUse: PoolState = {
+            ...pool,
+            running: ['/w/a', '/w/b', '/w/c'],
+            last_used: { '/w/c': 2000, '/w/a': 1000 }
+        };
+
+        expect(describeTooltip(withUse, new Map(), ['/w'])).toBe(
+            'c:\n' +
+            '\n' +
+            'a:\n' +
+            '\n' +
+            'b:'
+        );
+    });
+
+    it('keeps the running order without last-use times', () => {
+        expect(describeTooltip(pool, new Map(), ['/w'])).toBe(
+            'a:\n' +
+            '\n' +
+            'c:'
         );
     });
 
@@ -59,18 +86,19 @@ describe('describeTooltip', () => {
         const map = new Map([['/w/a', metrics('/w/a', { memory_bytes: null })]]);
 
         expect(describeTooltip({ ...pool, running: ['/w/a'] }, map, ['/w']))
-            .toBe('1/4  a  edit 20ms / full 60ms  incr 75%');
+            .toBe('a:\n20ms edit / 60ms full / 75% incremental');
     });
 
     it('leaves out the incremental share when incremental analysis is off', () => {
         const map = new Map([['/w/a', metrics('/w/a', { incremental_requested: false })]]);
 
         expect(describeTooltip({ ...pool, running: ['/w/a'] }, map, ['/w']))
-            .toBe('1/4  a  0.75GB  edit 20ms / full 60ms');
+            .toBe('a:\n0.75GB / 20ms edit / 60ms full');
     });
 
     it('lists every started analyser for a server that does not say which run', () => {
-        expect(describeTooltip({ started: ['/w/a'], cap: 2, pinned: [] }, new Map(), ['/w'])).toBe('1/2  a');
+        expect(describeTooltip({ started: ['/w/a'], cap: 2, pinned: [] }, new Map(), ['/w']))
+            .toBe('a:');
     });
 
     it('says what it is when nothing runs', () => {
