@@ -172,10 +172,10 @@ export function describeDetails(
 		return 'ghūl language support: no analysers running\n';
 	}
 
-	const blocks = roots.map(root => {
+	const blocks = roots.map((root, index) => {
 		const m = metrics.get(root);
 		const lines = [
-			`${relativeToFolders(root, folders)}:`,
+			`${index + 1}/${pool.cap}  ${relativeToFolders(root, folders)}`,
 			`  path: ${root}${pool.pinned.includes(root) ? ' (visible)' : ''}`
 		];
 
@@ -192,7 +192,7 @@ export function describeDetails(
 		return lines.join('\n');
 	});
 
-	return `${blocks.join('\n\n')}\n`;
+	return `analysers: ${roots.length} of ${pool.cap}\n\n${blocks.join('\n\n')}\n`;
 }
 
 // What the analyser did with the edits it was given, as against what it was

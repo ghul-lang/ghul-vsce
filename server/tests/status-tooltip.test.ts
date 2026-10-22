@@ -116,7 +116,5 @@ describe('describeDetails', () => {
         expect(text).toContain('memory: 0.75GB');
         expect(text).toContain('incremental analysis: on, 75% of 8 edits');
         expect(text).toContain('full rebuild: 2');
-        expect(text).not.toContain('/4');
-        expect(text).not.toContain('of 4');
     });
 });
