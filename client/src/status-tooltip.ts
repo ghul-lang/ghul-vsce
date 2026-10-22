@@ -27,11 +27,14 @@ export interface AnalysisMetrics {
 
 // Mirrors the server's ghul/pool notification. `running` is absent from a
 // server that predates it, in which case every started analyser is listed.
+// `last_used` holds the epoch milliseconds of each root's last interactive
+// use; a root missing from it has never been used interactively.
 export interface PoolState {
 	started: string[];
 	running?: string[];
 	cap: number;
 	pinned: string[];
+	last_used?: Record<string, number>;
 }
 
 export function formatDuration(milliseconds: number): string {
@@ -89,33 +92,49 @@ export function incrementalPercent(m: AnalysisMetrics): number | null {
 	return Math.round(((body_rewalk + interface_incremental) / total) * 100);
 }
 
+// One analyser as two rows: the path, then what is known about it. Values
+// come first so the figures line up when several analysers are listed.
 function describeAnalyser(
-	ordinal: number,
-	cap: number,
 	root: string,
 	m: AnalysisMetrics | undefined,
 	folders: string[]
 ): string {
-	const parts = [`${ordinal}/${cap}`, relativeToFolders(root, folders)];
+	const parts: string[] = [];
 
 	if (m?.memory_bytes != null && m.memory_bytes > 0) {
 		parts.push(formatMemory(m.memory_bytes));
 	}
 
 	if (m && (m.edit_ms != null || m.compile_ms != null)) {
-		parts.push(
-			`edit ${m.edit_ms == null ? '-' : formatDuration(m.edit_ms)} / ` +
-			`full ${m.compile_ms == null ? '-' : formatDuration(m.compile_ms)}`
-		);
+		parts.push(`${m.edit_ms == null ? '-' : formatDuration(m.edit_ms)} edit`);
+		parts.push(`${m.compile_ms == null ? '-' : formatDuration(m.compile_ms)} full`);
 	}
 
 	const percent = m ? incrementalPercent(m) : null;
 
 	if (percent != null) {
-		parts.push(`incr ${percent}%`);
+		parts.push(`${percent}% incremental`);
 	}
 
-	return parts.join('  ');
+	return parts.length === 0
+		? `${relativeToFolders(root, folders)}:`
+		: `${relativeToFolders(root, folders)}:\n${parts.join(' / ')}`;
+}
+
+// Most recently used first, the same order the pool's own eviction ranks
+// them: a root never used interactively counts as older than any that was.
+// Without last-use times the running order stands.
+function byLastUse(roots: string[], lastUsed: Record<string, number> | undefined): string[] {
+	if (!lastUsed) {
+		return roots;
+	}
+
+	return roots
+		.map((root, index) => ({ root, index }))
+		.sort((a, b) =>
+			(lastUsed[b.root] ?? -Infinity) - (lastUsed[a.root] ?? -Infinity) ||
+			a.index - b.index)
+		.map(entry => entry.root);
 }
 
 // The roots to list: those with a compiler process alive.
@@ -134,9 +153,10 @@ export function describeTooltip(
 		return 'ghūl language support';
 	}
 
-	return roots
-		.map((root, index) => describeAnalyser(index + 1, pool.cap, root, metrics.get(root), folders))
-		.join('\n');
+	const blocks = byLastUse(roots, pool.last_used)
+		.map(root => describeAnalyser(root, metrics.get(root), folders));
+
+	return blocks.join('\n\n');
 }
 
 // What the status bar item opens when clicked: everything known about each
@@ -152,10 +172,10 @@ export function describeDetails(
 		return 'ghūl language support: no analysers running\n';
 	}
 
-	const blocks = roots.map((root, index) => {
+	const blocks = roots.map(root => {
 		const m = metrics.get(root);
 		const lines = [
-			`${index + 1}/${pool.cap}  ${relativeToFolders(root, folders)}`,
+			`${relativeToFolders(root, folders)}:`,
 			`  path: ${root}${pool.pinned.includes(root) ? ' (visible)' : ''}`
 		];
 
@@ -172,7 +192,7 @@ export function describeDetails(
 		return lines.join('\n');
 	});
 
-	return `analysers: ${roots.length} of ${pool.cap}\n\n${blocks.join('\n\n')}\n`;
+	return `${blocks.join('\n\n')}\n`;
 }
 
 // What the analyser did with the edits it was given, as against what it was

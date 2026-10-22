@@ -467,15 +467,29 @@ export class ExtensionState {
     }
 
     // Tells the client what runs, for its status bar. `started` is every
-    // workspace held; `running` is those with a compiler process alive now.
+    // workspace held; `running` is those with a compiler process alive now;
+    // `last_used` is when each root was last used interactively, which the
+    // client lists the analysers by. Roots never used interactively are
+    // absent from it.
     private announcePool() {
+        const last_used: Record<string, number> = {};
+
+        for (const root of this.workspaces.keys()) {
+            const since = this.pool.idleSince(root);
+
+            if (since !== undefined) {
+                last_used[root] = since;
+            }
+        }
+
         this.connection?.sendNotification?.('ghul/pool', {
             started: Array.from(this.workspaces.keys()),
             running: Array.from(this.workspaces.entries())
                 .filter(([_, workspace]) => workspace.server_manager.isAlive())
                 .map(([root, _]) => root),
             cap: this.pool.cap,
-            pinned: Array.from(this.workspaces.keys()).filter(root => this.pool.isPinned(root))
+            pinned: Array.from(this.workspaces.keys()).filter(root => this.pool.isPinned(root)),
+            last_used
         });
     }
 
@@ -651,6 +665,10 @@ export class ExtensionState {
             if (candidate.context!.claimsSourceFile(uri)) {
                 if (use === Use.INTERACTIVE) {
                     this.pool.touch(candidate.root);
+                    // The status bar lists analysers by last use, so a change
+                    // in that order is worth announcing; debounced because
+                    // interactive use can be near-continuous while typing.
+                    this.scheduleAnnouncePool();
                 }
 
                 return candidate.context!;
