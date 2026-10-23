@@ -13,7 +13,7 @@
     "url": "https://github.com/ghul-lang/ghul-vsce"
   },
   "dependencies": {
-    "@types/file-url": "^2.0.0",
+    "@types/file-url": "^3.0.0",
     "@types/recursive-readdir": "^2.2.4",
     "bindings": "^1.5.0",
     "glob": "^13.0.6",
@@ -21,7 +21,7 @@
     "recursive-readdir": "^2.2.3",
     "shell-quote": "^1.8.4",
     "throttle-debounce": "^5.0.2",
-    "vscode-languageserver": "^10.1.0",
+    "vscode-languageserver": "^11.0.0",
     "vscode-languageserver-textdocument": "^1.0.12",
     "vscode-uri": "^3.1.0",
     "xml2js": "^0.6.2"
@@ -36,9 +36,9 @@
     "test:integration": "jest --config jest.integration.config.js"
   },
   "devDependencies": {
-    "@babel/core": "^7.29.7",
-    "@babel/preset-env": "^7.29.7",
-    "@babel/preset-typescript": "^7.29.7",
+    "@babel/core": "^8.0.0",
+    "@babel/preset-env": "^8.0.0",
+    "@babel/preset-typescript": "^8.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.1.1",
     "@types/shell-quote": "^1.7.5",
