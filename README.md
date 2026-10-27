@@ -1,7 +1,7 @@
 # ghūl programming language Visual Studio Code extension
 
 [![CI/CD](https://img.shields.io/github/actions/workflow/status/ghul-lang/ghul-vsce/CICD.yaml?branch=main)](https://github.com/ghul-lang/ghul-vsce/actions/workflows/CICD.yaml?query=branch%3Amain)
-[![Visual Studio Marketplace](https://badgen.net/vs-marketplace/v/degory.ghul)](https://marketplace.visualstudio.com/items?itemName=degory.ghul)
+[![Visual Studio Marketplace](https://img.shields.io/github/v/release/ghul-lang/ghul-vsce?label=Visual%20Studio%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=degory.ghul)
 [![Release](https://img.shields.io/github/v/release/ghul-lang/ghul-vsce?label=release)](https://github.com/ghul-lang/ghul-vsce/releases)
 [![Release Date](https://img.shields.io/github/release-date/ghul-lang/ghul-vsce)](https://github.com/ghul-lang/ghul-vsce/releases)
 [![Issues](https://img.shields.io/github/issues-search/ghul-lang/ghul?query=is%3Aopen%20is%3Aissue%20label%3Aghul-vsce&label=issues)](https://github.com/ghul-lang/ghul/issues?q=is%3Aopen+is%3Aissue+label%3Aghul-vsce)
