@@ -537,6 +537,10 @@ export class ResponseHandler {
     // error frame, which aborts it.
     memory_usage_supported: boolean = false;
 
+    // Whether the analyser can be asked to say when an edit falls back to a
+    // whole-project rebuild, and that a build is still working.
+    progress_frames_supported: boolean = false;
+
     // Set from the analyser's advertised capabilities on LISTEN. A client
     // must not send edit_delta without seeing this: unknown JSON members are
     // ignored, so an older analyser would read a delta-fielded edit as empty
@@ -739,6 +743,8 @@ export class ResponseHandler {
         this.stats_supported = capabilities.includes("incremental-analysis");
 
         this.memory_usage_supported = capabilities.includes("memory-usage");
+
+        this.progress_frames_supported = capabilities.includes("progress-frames");
 
         this.edit_deltas_supported = capabilities.includes("edit-deltas");
 

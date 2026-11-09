@@ -149,6 +149,31 @@ describe('ResponseParser', () => {
         expect(clear).toHaveBeenCalled();
     });
 
+    // A progress frame answers no request, so the request in flight is
+    // still outstanding: clearing the watchdog would also report the
+    // compiler idle while it is still working on that request.
+    it('moves the watchdog onto the rebuild limit on a rebuilding frame, without clearing it', () => {
+        const clear = jest.spyOn(watchdog, 'clearWatchdog');
+        const allow = jest.spyOn(watchdog, 'allowRebuild');
+
+        parser.handleChunk(line({ kind: 'rebuilding', reason: 'not-eligible' }));
+
+        expect(allow).toHaveBeenCalled();
+        expect(clear).not.toHaveBeenCalled();
+        expect(recorder.calls).toEqual([]);
+    });
+
+    it('restarts the watchdog on a working frame, without clearing it', () => {
+        const clear = jest.spyOn(watchdog, 'clearWatchdog');
+        const progress = jest.spyOn(watchdog, 'noteProgress');
+
+        parser.handleChunk(line({ kind: 'working' }));
+
+        expect(progress).toHaveBeenCalled();
+        expect(clear).not.toHaveBeenCalled();
+        expect(recorder.calls).toEqual([]);
+    });
+
     it('skips blank lines emitted by trailing newlines', () => {
         parser.handleChunk(line({ kind: 'listen' }) + '\n' + line({ kind: 'restart' }));
 

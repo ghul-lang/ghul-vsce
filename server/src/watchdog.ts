@@ -81,6 +81,27 @@ export class Watchdog {
         this.on_busy_changed(true);
     }
 
+    // The analyser has said the request in flight is being answered by a
+    // whole-project rebuild: give it the rebuild limit from now.
+    allowRebuild() {
+        if (this.watchdog_timer && !this.allowing_rebuild) {
+            clearTimeout(this.watchdog_timer);
+
+            this.armTimer(true);
+        }
+    }
+
+    // The analyser has said its build is still moving: the request in
+    // flight gets its limit again from now. A build that stops moving stops
+    // saying so, and then times out as it would have without these.
+    noteProgress() {
+        if (this.watchdog_timer) {
+            clearTimeout(this.watchdog_timer);
+
+            this.armTimer(this.allowing_rebuild);
+        }
+    }
+
     private rebuildLimit(): number {
         return Math.max(this.rebuild_timeout_milliseconds, this.timeout_milliseconds);
     }
