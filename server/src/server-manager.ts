@@ -9,7 +9,7 @@ import {
 
 import { Connection } from 'vscode-languageserver';
 
-import { log } from './log';
+import { LineLog, log } from './log';
 
 import { GhulConfig } from './ghul-config';
 
@@ -337,8 +337,14 @@ export class ServerManager {
 
 		log(`spawned compiler process PID ${this.child.pid}`);
 
+		const stderr_log = new LineLog("compiler: ");
+
 		this.child.stderr.on('data', (chunk: Buffer) => {
-			process.stderr.write(chunk);
+			stderr_log.write(chunk);
+		});
+
+		this.child.stderr.on('end', () => {
+			stderr_log.flush();
 		});
 
 		// A killed compiler can leave a half-received frame in the shared

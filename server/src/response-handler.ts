@@ -23,6 +23,8 @@ import {
     Range,
     Diagnostic,
     DiagnosticRelatedInformation,
+    LSPErrorCodes,
+    ResponseError,
 } from 'vscode-languageserver';
 
 import { log } from './log';
@@ -655,23 +657,29 @@ export class ResponseHandler {
         this._formatting_ranges = [];
     }
 
+    // Every request still waiting is answered with ContentModified: the
+    // compiler that was asked has gone and its replacement holds new state,
+    // so the editor drops the answer quietly or asks again. A bare string
+    // would reach the client as an internal error (-32603) instead.
     rejectAllPendingPromises(message: string) {
-        this._hover_promise_queue.rejectAll(message);
-        this._definition_promise_queue.rejectAll(message);
-        this._declaration_promise_queue.rejectAll(message);
-        this._completion_promise_queue.rejectAll(message);
-        this._signature_promise_queue.rejectAll(message);
-        this._symbols_promise_queue.rejectAll(message);
-        this._references_promise_queue.rejectAll(message);
-        this._implementation_promise_queue.rejectAll(message);
-        this._type_definition_promise_queue.rejectAll(message);
-        this._rename_promise_queue.rejectAll(message);
-        this._formatting_promise_queue.rejectAll(message);
-        this._range_formatting_promise_queue.rejectAll(message);
-        this._semantic_tokens_promise_queue.rejectAll(message);
-        this._inlay_hints_promise_queue.rejectAll(message);
-        this._code_actions_promise_queue.rejectAll(message);
-        this._add_references_promise_queue.rejectAll(message);
+        const error = new ResponseError(LSPErrorCodes.ContentModified, message);
+
+        this._hover_promise_queue.rejectAll(error);
+        this._definition_promise_queue.rejectAll(error);
+        this._declaration_promise_queue.rejectAll(error);
+        this._completion_promise_queue.rejectAll(error);
+        this._signature_promise_queue.rejectAll(error);
+        this._symbols_promise_queue.rejectAll(error);
+        this._references_promise_queue.rejectAll(error);
+        this._implementation_promise_queue.rejectAll(error);
+        this._type_definition_promise_queue.rejectAll(error);
+        this._rename_promise_queue.rejectAll(error);
+        this._formatting_promise_queue.rejectAll(error);
+        this._range_formatting_promise_queue.rejectAll(error);
+        this._semantic_tokens_promise_queue.rejectAll(error);
+        this._inlay_hints_promise_queue.rejectAll(error);
+        this._code_actions_promise_queue.rejectAll(error);
+        this._add_references_promise_queue.rejectAll(error);
         this._formatting_ranges = [];
     }
 

@@ -223,6 +223,26 @@ describe('EditQueue', () => {
             expect(queue.edit_timeout).toBe(300); // 200 * 1.5
         });
 
+        // The slow round trips are the rebuilds, whichever request caused
+        // them, so the watchdog gives a rebuild a multiple of the longest.
+        it('sizes the watchdog\'s rebuild limit from the longest round trip', () => {
+            queue.reset();
+            queue.start([{ uri: 'file:///a.ghul', source: 't' }, { uri: 'file:///b.ghul', source: 'u' }]);
+
+            jest.advanceTimersByTime(20000);
+            queue.onPartialCompileDone(200);
+
+            expect(watchdog.rebuild_timeout_milliseconds).toBe(20000 * EditQueue.REBUILD_TIMEOUT_FACTOR);
+
+            queue.queueEdit3('file:///a.ghul', 2, 'tt');
+            jest.advanceTimersByTime(queue.edit_timeout);
+            jest.advanceTimersByTime(50);
+            queue.onPartialCompileDone(200);
+
+            // A quicker round trip later doesn't narrow it.
+            expect(watchdog.rebuild_timeout_milliseconds).toBe(20000 * EditQueue.REBUILD_TIMEOUT_FACTOR);
+        });
+
         it('marks the requester analysed so queries can be answered', () => {
             queue.reset();
             queue.start([{ uri: 'file:///a.ghul', source: 't' }]);

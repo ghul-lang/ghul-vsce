@@ -89,6 +89,18 @@ export class EditQueue {
     compile_start_time: number;
     analyse_start_time: number;
 
+    // When the whole project was handed to the analyser by start(), which
+    // the latency figures above leave out but the rebuild limit counts.
+    project_start_time: number;
+
+    // The longest round trip of any edit or compile measured against the
+    // analyser now running. The watchdog's rebuild limit is sized from it:
+    // the slow round trips are the rebuilds, whichever request caused them.
+    longest_round_trip_ms: number;
+
+    // How many times the longest round trip the watchdog allows a rebuild.
+    static readonly REBUILD_TIMEOUT_FACTOR = 3;
+
     state: QueueState;
 
     // Queries held while a compile is in flight against an analyser that
@@ -176,6 +188,9 @@ export class EditQueue {
         this.edit_latency_ms = null;
         this.compile_latency_ms = null;
 
+        this.project_start_time = 0;
+        this.longest_round_trip_ms = 0;
+
         this.pending_changes = new Map();
         this.last_sent_text = new Map();
         this.flushed_waiters = [];
@@ -221,6 +236,11 @@ export class EditQueue {
         // span between them as a keystroke's latency.
         this.send_start_time = 0;
         this.compile_start_time = 0;
+        this.project_start_time = 0;
+
+        // The rebuild limit belonged to the compiler that died; the watchdog
+        // starts the next one on its cold-start limit.
+        this.longest_round_trip_ms = 0;
 
         // Nothing is going to land and release these — the compiler they were
         // waiting on is gone. Let the queries through to be answered by the
@@ -366,6 +386,9 @@ export class EditQueue {
         // can now be answered against real state.
         this.requester.analysed = true;
 
+        this.noteRoundTrip(this.send_start_time || this.project_start_time);
+        this.project_start_time = 0;
+
         this.recordLatency('edit', this.send_start_time);
         this.requestStatsIfDue();
         this.requestMemoryIfDue();
@@ -431,6 +454,8 @@ export class EditQueue {
         this.requester.analysed = true;
 
         this.progress?.end(Activity.Compile);
+
+        this.noteRoundTrip(this.compile_start_time);
 
         this.recordLatency('compile', this.compile_start_time);
         this.requestStatsIfDue();
@@ -529,6 +554,23 @@ export class EditQueue {
         }
 
         this.reportMetrics();
+    }
+
+    // Fold one round trip into the watchdog's rebuild limit.
+    private noteRoundTrip(sent_at: number) {
+        if (!sent_at) {
+            return;
+        }
+
+        const round_trip = Date.now() - sent_at;
+
+        if (round_trip <= this.longest_round_trip_ms) {
+            return;
+        }
+
+        this.longest_round_trip_ms = round_trip;
+
+        this.watchdog.setRebuildTimeout(round_trip * EditQueue.REBUILD_TIMEOUT_FACTOR);
     }
 
     private smooth(previous: number | null, sample: number): number {
@@ -661,6 +703,7 @@ export class EditQueue {
         this.clearIdleTimer();
 
         this.state = QueueState.DOING_PARTIAL_COMPILE;
+        this.project_start_time = Date.now();
         this.sendMultiEdits(documents);
     }
 
