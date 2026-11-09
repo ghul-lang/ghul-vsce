@@ -41,6 +41,7 @@ class RecordingResponseHandler {
     code_actions_supported: boolean = true;
     add_references_supported: boolean = true;
     mid_compile_queries_supported: boolean = true;
+    progress_frames_supported: boolean = false;
 }
 
 function makeRunningChild(stream: CapturingStream): ChildProcess {
@@ -233,6 +234,23 @@ describe('Requester', () => {
         events.listening();
 
         expect(parseOnlyRequest(stream)).toEqual({ kind: 'add_references', paths: ['/cells/a.dll', '/cells/b.dll'] });
+    });
+
+    it('asks an analyser that can report its progress to do so as soon as it listens', () => {
+        response.progress_frames_supported = true;
+
+        stream.written = [];
+        events.listening();
+
+        expect(parseOnlyRequest(stream)).toEqual({ kind: 'report_progress' });
+        expect(watchdog.isRunning()).toBe(false);
+    });
+
+    it('does not ask an analyser that cannot report its progress', () => {
+        stream.written = [];
+        events.listening();
+
+        expect(stream.written).toEqual([]);
     });
 
     it('does not remember references the analyser refused', async () => {

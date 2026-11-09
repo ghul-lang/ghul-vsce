@@ -55,6 +55,19 @@ export class ResponseParser {
             return;
         }
 
+        // Progress frames answer no request, so the request in flight is
+        // still outstanding: they move its watchdog on rather than clear it.
+        if (message.kind == "rebuilding") {
+            log(`analyser is rebuilding the project to answer an edit (${message.reason})`);
+            this.watchdog.allowRebuild();
+            return;
+        }
+
+        if (message.kind == "working") {
+            this.watchdog.noteProgress();
+            return;
+        }
+
         // Every message clears the watchdog: the compiler is alive and talking.
         this.watchdog.clearWatchdog();
 

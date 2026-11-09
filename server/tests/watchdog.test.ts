@@ -88,6 +88,44 @@ describe('Watchdog', () => {
         expect(onTimeout).toHaveBeenCalledTimes(1);
     });
 
+    it('moves a running request onto the rebuild limit when the analyser says it is rebuilding', () => {
+        watchdog.setRebuildTimeout(40000);
+
+        watchdog.startWatchdog();
+        jest.advanceTimersByTime(500);
+
+        watchdog.allowRebuild();
+
+        jest.advanceTimersByTime(39999);
+        expect(onTimeout).not.toHaveBeenCalled();
+
+        jest.advanceTimersByTime(1);
+        expect(onTimeout).toHaveBeenCalledTimes(1);
+    });
+
+    it('gives a request its limit again each time the analyser says it is working', () => {
+        watchdog.setRebuildTimeout(40000);
+
+        watchdog.startWatchdogIfNotRunning(true);
+
+        for (let i = 0; i < 5; i++) {
+            jest.advanceTimersByTime(30000);
+            watchdog.noteProgress();
+        }
+
+        expect(onTimeout).not.toHaveBeenCalled();
+
+        jest.advanceTimersByTime(40000);
+        expect(onTimeout).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores progress when no request is outstanding', () => {
+        watchdog.noteProgress();
+        watchdog.allowRebuild();
+
+        expect(watchdog.isRunning()).toBe(false);
+    });
+
     it('never gives a rebuild less than the floor', () => {
         watchdog.setRebuildTimeout(2000);
 

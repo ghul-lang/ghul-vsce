@@ -102,6 +102,13 @@ export class Requester {
         });
 
         server_event_emitter.onListening(() => {
+            // Before anything else is sent, so the project's first analysis,
+            // a rebuild of everything, already reports its progress. Answered
+            // by nothing, so it arms no watchdog.
+            if (this.response_handler.progress_frames_supported) {
+                this.send({ kind: "report_progress" });
+            }
+
             if (this.added_references.length > 0 && this.response_handler.add_references_supported) {
                 this.send({ kind: "add_references", paths: this.added_references });
 
