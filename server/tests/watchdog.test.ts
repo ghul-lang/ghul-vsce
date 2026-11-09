@@ -1,4 +1,4 @@
-import { Watchdog, COLD_START_TIMEOUT_MILLISECONDS } from '../src/watchdog';
+import { Watchdog, COLD_START_TIMEOUT_MILLISECONDS, REBUILD_TIMEOUT_FLOOR_MILLISECONDS } from '../src/watchdog';
 
 describe('Watchdog', () => {
     let watchdog: Watchdog;
@@ -24,12 +24,74 @@ describe('Watchdog', () => {
         expect(watchdog.watchdog_timer).toBeNull();
     });
 
-    it('fires the timeout handler after the timeout', () => {
+    it('fires the timeout handler once a rebuild\'s limit has passed too', () => {
         watchdog.startWatchdog();
 
         jest.advanceTimersByTime(1500);
 
+        expect(onTimeout).not.toHaveBeenCalled();
+
+        jest.advanceTimersByTime(COLD_START_TIMEOUT_MILLISECONDS - 1500);
+
         expect(onTimeout).toHaveBeenCalledTimes(1);
+    });
+
+    // An edit the analyser can't apply incrementally is answered by a
+    // rebuild, which nothing on this side can predict.
+    it('allows a request past its own limit as long as a rebuild takes', () => {
+        watchdog.setRebuildTimeout(40000);
+
+        watchdog.startWatchdog();
+
+        jest.advanceTimersByTime(39999);
+        expect(onTimeout).not.toHaveBeenCalled();
+        expect(watchdog.isRunning()).toBe(true);
+
+        jest.advanceTimersByTime(1);
+        expect(onTimeout).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts a request known to rebuild on the rebuild limit', () => {
+        watchdog.setRebuildTimeout(40000);
+
+        watchdog.startWatchdogIfNotRunning(true);
+
+        jest.advanceTimersByTime(39999);
+        expect(onTimeout).not.toHaveBeenCalled();
+
+        jest.advanceTimersByTime(1);
+        expect(onTimeout).toHaveBeenCalledTimes(1);
+    });
+
+    it('moves a running timer onto the rebuild limit when a rebuild is asked for behind it', () => {
+        watchdog.setRebuildTimeout(40000);
+
+        watchdog.startWatchdogIfNotRunning();
+        jest.advanceTimersByTime(500);
+
+        watchdog.startWatchdogIfNotRunning(true);
+
+        jest.advanceTimersByTime(39999);
+        expect(onTimeout).not.toHaveBeenCalled();
+
+        jest.advanceTimersByTime(1);
+        expect(onTimeout).toHaveBeenCalledTimes(1);
+    });
+
+    it('fires at its own limit when that is already as long as a rebuild\'s', () => {
+        watchdog.setTimeout(50000);
+        watchdog.setRebuildTimeout(40000);
+
+        watchdog.startWatchdog();
+
+        jest.advanceTimersByTime(50000);
+        expect(onTimeout).toHaveBeenCalledTimes(1);
+    });
+
+    it('never gives a rebuild less than the floor', () => {
+        watchdog.setRebuildTimeout(2000);
+
+        expect(watchdog.rebuild_timeout_milliseconds).toBe(REBUILD_TIMEOUT_FLOOR_MILLISECONDS);
     });
 
     it('startWatchdogIfNotRunning is idempotent while a timer is set', () => {
@@ -48,11 +110,12 @@ describe('Watchdog', () => {
         jest.advanceTimersByTime(800);
 
         watchdog.resetWatchdog();
-        // 500ms after reset (1300 total) — pre-reset would have fired by now:
+        // 500ms after reset (1300 total) — pre-reset would have gone past
+        // its own limit by now:
         jest.advanceTimersByTime(500);
         expect(onTimeout).not.toHaveBeenCalled();
 
-        jest.advanceTimersByTime(600);
+        jest.advanceTimersByTime(COLD_START_TIMEOUT_MILLISECONDS - 500);
         expect(onTimeout).toHaveBeenCalledTimes(1);
     });
 
@@ -73,10 +136,12 @@ describe('Watchdog', () => {
 
     it('enterColdStart widens the timeout to the cold-start bound', () => {
         watchdog.setTimeout(3676);
+        watchdog.setRebuildTimeout(40000);
 
         watchdog.enterColdStart();
 
         expect(watchdog.timeout_milliseconds).toBe(COLD_START_TIMEOUT_MILLISECONDS);
+        expect(watchdog.rebuild_timeout_milliseconds).toBe(COLD_START_TIMEOUT_MILLISECONDS);
     });
 
     it('enterColdStart drops a timer still running against the outgoing compiler', () => {
@@ -136,7 +201,7 @@ describe('Watchdog busy signal', () => {
         const watchdog = makeWatchdog();
 
         watchdog.startWatchdogIfNotRunning();
-        jest.advanceTimersByTime(1000);
+        jest.advanceTimersByTime(COLD_START_TIMEOUT_MILLISECONDS);
 
         expect(busy).toEqual([true, false]);
     });

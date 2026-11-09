@@ -97,6 +97,89 @@ describe('Requester', () => {
         watchdog.clearWatchdog();
     });
 
+    // The analyser applies an edit incrementally only when it names one
+    // file, so an edit of several, a full compile and a restart are each
+    // answered by a rebuild, and start on the rebuild limit.
+    describe('watchdog limit', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+            watchdog.setTimeout(1000);
+            watchdog.setRebuildTimeout(40000);
+        });
+
+        afterEach(() => {
+            watchdog.clearWatchdog();
+            jest.useRealTimers();
+        });
+
+        function firesAfter(send: () => void): number {
+            let fired_at = -1;
+            let elapsed = 0;
+
+            watchdog = new Watchdog(1000, () => { fired_at = elapsed; });
+            watchdog.setRebuildTimeout(40000);
+            requester.watchdog = watchdog;
+
+            send();
+
+            while (fired_at < 0 && elapsed < 100000) {
+                elapsed += 1000;
+                jest.advanceTimersByTime(1000);
+            }
+
+            return fired_at;
+        }
+
+        it('gives an edit of several files the rebuild limit from the start', () => {
+            let extended = false;
+            const spy = jest.spyOn(console, 'log').mockImplementation((...args: any[]) => {
+                if (String(args.join(' ')).includes('allowing up to')) {
+                    extended = true;
+                }
+            });
+
+            expect(firesAfter(() => requester.sendDocuments([
+                { uri: 'file:///a.ghul', source: 'a' },
+                { uri: 'file:///b.ghul', source: 'b' },
+            ]))).toBe(40000);
+
+            expect(extended).toBe(false);
+
+            spy.mockRestore();
+        });
+
+        it('extends an edit of one file to the rebuild limit only once its own has passed', () => {
+            let extended = false;
+            const spy = jest.spyOn(console, 'log').mockImplementation((...args: any[]) => {
+                if (String(args.join(' ')).includes('allowing up to')) {
+                    extended = true;
+                }
+            });
+
+            expect(firesAfter(() => requester.sendDocuments([
+                { uri: 'file:///a.ghul', source: 'a' },
+            ]))).toBe(40000);
+
+            expect(extended).toBe(true);
+
+            spy.mockRestore();
+        });
+
+        it('gives a full compile the rebuild limit from the start', () => {
+            let extended = false;
+            const spy = jest.spyOn(console, 'log').mockImplementation((...args: any[]) => {
+                if (String(args.join(' ')).includes('allowing up to')) {
+                    extended = true;
+                }
+            });
+
+            expect(firesAfter(() => requester.sendFullCompileRequest())).toBe(40000);
+            expect(extended).toBe(false);
+
+            spy.mockRestore();
+        });
+    });
+
     it('sendCodeActions writes the requested range in 1-based wire coordinates', async () => {
         await requester.sendCodeActions('file:///x.ghul', {
             start: { line: 4, character: 0 },

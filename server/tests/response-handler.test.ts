@@ -1,6 +1,6 @@
 export {}
 
-import { Connection } from 'vscode-languageserver';
+import { Connection, LSPErrorCodes, ResponseError } from 'vscode-languageserver';
 import { ResponseHandler, parseInlayHints } from '../src/response-handler';
 import { ConfigEventEmitter } from '../src/config-event-emitter';
 import { GhulConfig } from '../src/ghul-config';
@@ -120,7 +120,9 @@ describe('ResponseHandler', () => {
         results.forEach(result => {
             expect(result.status).toBe('rejected');
             if (result.status === 'rejected') {
-                expect(result.reason).toBe(errorMessage);
+                expect(result.reason).toBeInstanceOf(ResponseError);
+                expect(result.reason.code).toBe(LSPErrorCodes.ContentModified);
+                expect(result.reason.message).toBe(errorMessage);
             }
         });
     });

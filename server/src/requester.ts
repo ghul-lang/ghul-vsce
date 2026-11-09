@@ -246,7 +246,9 @@ export class Requester {
         // already gone.
         this.ensure_running();
 
-        this.watchdog.startWatchdogIfNotRunning();
+        // The analyser applies an edit incrementally only when it names
+        // exactly one file; any other answers with a rebuild.
+        this.watchdog.startWatchdogIfNotRunning(documents.length != 1);
 
         this.send({
             kind: "edit",
@@ -260,7 +262,7 @@ export class Requester {
     sendEditDeltas(deltas: EditDelta[]) {
         this.ensure_running();
 
-        this.watchdog.startWatchdogIfNotRunning();
+        this.watchdog.startWatchdogIfNotRunning(deltas.length != 1);
 
         this.send({
             kind: "edit_delta",
@@ -527,7 +529,7 @@ export class Requester {
     }
 
     sendFullCompileRequest() {
-        this.watchdog.startWatchdogIfNotRunning();
+        this.watchdog.startWatchdogIfNotRunning(true);
 
         this.send({ kind: "compile" });
     }
@@ -583,7 +585,7 @@ export class Requester {
 
     sendRestart() {
         if (this.analysed) {
-            this.watchdog.startWatchdogIfNotRunning();
+            this.watchdog.startWatchdogIfNotRunning(true);
 
             this.send({ kind: "restart" });
         }
