@@ -4,7 +4,7 @@ import { join, relative } from 'path';
 import { globSync } from 'glob';
 
 import { log } from './log';
-import { MANIFEST, manifestKind } from './manifest-project';
+import { coveredBySources, isManifestProject, MANIFEST, manifestKind, manifestSources } from './manifest-project';
 
 // What a directory is to the extension. A project is analysed; a workspace
 // owns no sources and lists the projects under it; a collection owns no
@@ -100,7 +100,12 @@ export function expandMembers(workspace: string, members: string[]): string[] {
 // The folder itself is never returned as a project unless it is one: a
 // workspace and a folder with no marker own no sources, so they get no
 // analyser of their own.
-export function discoverRoots(folder: string): DiscoveredRoots {
+//
+// Where `prefer_manifest` says to take a folder's manifest even beside a
+// .ghulproj, as the `ghul.projectFile` setting `manifest` does, a nested
+// project under it whose directory the manifest's own source globs cover is
+// part of the folder's project, not a project of its own.
+export function discoverRoots(folder: string, prefer_manifest: boolean = false): DiscoveredRoots {
     let own = classify(folder);
 
     let result: DiscoveredRoots = { self: 'none', projects: [], collections: [] };
@@ -123,7 +128,11 @@ export function discoverRoots(folder: string): DiscoveredRoots {
         result.self = 'project';
     }
 
-    scan(folder, result);
+    let absorbing = prefer_manifest && result.self === 'project' && isManifestProject(folder, true)
+        ? manifestSources(folder)
+        : [];
+
+    scan(folder, result, absorbing);
 
     return result;
 }
@@ -131,7 +140,7 @@ export function discoverRoots(folder: string): DiscoveredRoots {
 // Every project and collection strictly under `start`. A project is scanned
 // through, since a nested project is a project of its own; a collection is not
 // entered.
-function scan(start: string, result: DiscoveredRoots) {
+function scan(start: string, result: DiscoveredRoots, absorbing: string[] = []) {
     let visited = 0;
     let stack: string[] = [start];
 
@@ -170,6 +179,12 @@ function scan(start: string, result: DiscoveredRoots) {
             }
 
             if (found?.kind === 'project') {
+                if (absorbing.length && coveredBySources(relative(start, child), absorbing)) {
+                    log(`${child} is part of the project ${join(start, MANIFEST)} describes, which covers its sources`);
+                    stack.push(child);
+                    continue;
+                }
+
                 result.projects.push(child);
             }
 

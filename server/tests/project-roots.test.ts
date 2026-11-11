@@ -79,6 +79,19 @@ describe('discoverRoots', () => {
         expect(relativeTo(found.projects)).toEqual(['unit-tests']);
     });
 
+    // ghul.projectFile manifest: the folder's manifest covers wasm/ and
+    // llvm/, so their own .ghulproj files are part of it; unit-tests/ is not.
+    it('takes a nested project the preferred manifest covers as part of it', () => {
+        write('ghul.ghulproj', '<Project />');
+        write('ghul-project.json', '{ "name": "ghul", "sources": ["src/**/*.ghul", "wasm/src/**/*.ghul", "llvm/src/**/*.ghul"] }');
+        write('wasm/wasm.ghulproj', '<Project />');
+        write('llvm/llvm.ghulproj', '<Project />');
+        write('unit-tests/unit-tests.ghulproj', '<Project />');
+
+        expect(relativeTo(discoverRoots(root, true).projects)).toEqual(['unit-tests']);
+        expect(relativeTo(discoverRoots(root, false).projects)).toEqual(['llvm', 'unit-tests', 'wasm']);
+    });
+
     it('treats a folder with only a legacy ghul.json as a project', () => {
         write('ghul.json', '{}');
 

@@ -42,7 +42,9 @@ no workspace file is needed.
   not analyse its files, and says so once. Open a project inside it as a folder
   to analyse that project.
 - A project's own sources stop at any other project nested inside it: a file
-  belongs to the nearest enclosing project.
+  belongs to the nearest enclosing project. The exception is a folder read
+  from its manifest under `ghul.projectFile` `manifest`, which takes in the
+  nested projects its `sources` cover.
 - A workspace file listing each project as a folder keeps working as it did.
 
 Each project's analyser is a compiler process holding the whole project in
@@ -65,6 +67,22 @@ workspace folder:
   large project, at the cost of some answers being briefly out of date after an
   edit that changes a declaration. Off unless turned on.
 - `ghul.plaintextHover` — render hovers as plain text rather than markdown.
+- `ghul.projectFile` — which file a project is read from where a folder holds
+  both a `.ghulproj` and a `ghul-project.json`: `auto` takes the `.ghulproj`,
+  and `manifest` takes the `ghul-project.json`, read by the ghul tool. Under
+  `manifest`, a nested project whose directory the manifest's `sources` cover
+  is part of it rather than a project of its own.
+- `ghul.compilerHost` — how the compiler that analyses a `ghul-project.json`
+  project is run: `dotnet`, `llvm` (the compiler built for llvm, a native
+  executable, on Linux x64 and arm64), `wasm` (under Node), or `auto` for the
+  ghul tool's own choice. Unset leaves it to the ghul tool. Needs the ghul tool
+  9.8.0 or later; an older one is reported and the setting is ignored.
+- `ghul.compilerPath` — a compiler to analyse a `ghul-project.json` project
+  with, in place of the one the ghul tool would install: a native `ghul`
+  executable, or a command such as `dotnet /path/to/ghul.dll`.
+
+The output channel says, for each project, which file it was read from and
+why, and which compiler analyses it.
 
 How the *project* is built stays in the project file: `<GhulCompiler>`,
 `<GhulSources>` and `<GhulOptions>` in the `.ghulproj` govern an ordinary

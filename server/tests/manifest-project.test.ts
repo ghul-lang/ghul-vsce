@@ -10,6 +10,9 @@ import {
     compilerArgv,
     firstListedTarget,
     responseFileTarget,
+    coveredBySources,
+    isOlder,
+    toolArguments,
 } from '../src/manifest-project';
 
 // child_process.execFile and spawnSync are non-configurable in modern Node,
@@ -54,6 +57,48 @@ describe('manifest projects', () => {
 
         it('is false for a folder with no manifest', () => {
             expect(isManifestProject(workspace)).toBe(false);
+        });
+
+        // ghul.projectFile manifest takes the manifest beside a .ghulproj.
+        it('is true beside a .ghulproj where the manifest is preferred', () => {
+            writeFileSync(join(workspace, 'ghul-project.json'), '{}');
+            writeFileSync(join(workspace, 'app.ghulproj'), '<Project/>');
+
+            expect(isManifestProject(workspace, true)).toBe(true);
+            expect(isManifestProject(workspace, false)).toBe(false);
+        });
+    });
+
+    describe('coveredBySources', () => {
+        it('covers a directory whose path a glob names or reaches into', () => {
+            let sources = ['src/**/*.ghul', 'wasm/src/**/*.ghul', './llvm/src/*.ghul'];
+
+            expect(coveredBySources('wasm', sources)).toBe(true);
+            expect(coveredBySources('llvm', sources)).toBe(true);
+            expect(coveredBySources('src/driver', sources)).toBe(false);
+            expect(coveredBySources('unit-tests', sources)).toBe(false);
+            expect(coveredBySources('was', sources)).toBe(false);
+        });
+
+        it('covers nothing from a glob that starts with a wildcard', () => {
+            expect(coveredBySources('wasm', ['**/*.ghul'])).toBe(false);
+        });
+    });
+
+    describe('toolArguments', () => {
+        it('passes the host and the compiler the settings name, and nothing for unset', () => {
+            expect(toolArguments({ compiler_host: 'llvm', compiler_path: '/opt/ghul' })).toEqual(['--compiler-host', 'llvm', '--compiler', '/opt/ghul']);
+            expect(toolArguments({ compiler_host: null, compiler_path: null })).toEqual([]);
+            expect(toolArguments(undefined)).toEqual([]);
+        });
+    });
+
+    describe('isOlder', () => {
+        it('compares major, minor and patch as numbers', () => {
+            expect(isOlder('9.7.1', '9.8.0')).toBe(true);
+            expect(isOlder('9.10.0', '9.8.0')).toBe(false);
+            expect(isOlder('9.8.0', '9.8.0')).toBe(false);
+            expect(isOlder('10.0.0', '9.8.0')).toBe(false);
         });
     });
 
@@ -198,6 +243,14 @@ describe('manifest projects', () => {
             expect(manifestCompiler(workspace)).toEqual({ compiler: ['/usr/bin/node', 'C:\\ghul\\ghul.mjs'] });
             expect(spawnSyncMock).toHaveBeenCalledTimes(1);
             expect(spawnSyncMock.mock.calls[0][1]).toEqual(['project', 'compiler', '--json']);
+        });
+
+        it('passes the arguments the settings add to the ghul tool', () => {
+            spawnSyncMock.mockReturnValue({ status: 0, stdout: '["/opt/ghul"]\n', stderr: '' });
+
+            manifestCompiler(workspace, ['--compiler-host', 'llvm']);
+
+            expect(spawnSyncMock.mock.calls[0][1]).toEqual(['project', 'compiler', '--json', '--compiler-host', 'llvm']);
         });
 
         it('asks again without --json when ghul refuses it', () => {

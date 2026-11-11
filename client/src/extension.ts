@@ -236,6 +236,12 @@ export function activate(context: ExtensionContext) {
 		// Register the server for ghul source files
 		documentSelector: [{scheme: 'file', language: 'ghul'}],
 
+		// Which file a project is read from decides which projects there
+		// are, so the server needs it before it looks at any folder.
+		initializationOptions: {
+			projectFile: workspace.getConfiguration('ghul').get<string>('projectFile') ?? 'auto',
+		},
+
 		// File watching is not configured here: the server registers the
 		// patterns it cares about itself, via workspace/didChangeWatchedFiles,
 		// so that every client watches the same set. Declaring them here too
