@@ -285,6 +285,25 @@ describe('getGhulConfig', () => {
         expect(cfg.source).toEqual(['./**/*.ghul']);
     });
 
+    // ghul.projectFile manifest: the manifest's compiler is the one, and a
+    // .ghulproj beside it names neither the compiler nor the sources.
+    it('takes nothing from a .ghulproj beside a manifest it is analysing', () => {
+        const workspace = ws();
+        writeFileSync(join(workspace, 'test.ghulproj'), `<?xml version="1.0"?>
+<Project Sdk="Ghul.Sdk">
+    <PropertyGroup>
+        <GhulCompiler>ghul-compiler-from-proj --flag</GhulCompiler>
+    </PropertyGroup>
+    <ItemGroup>
+        <GhulSources Include="proj-only/**/*.ghul" />
+    </ItemGroup>
+</Project>`);
+
+        const cfg = getGhulConfig(workspace, {}, null, null, ['/opt/ghul-compiler']);
+        expect(cfg.compiler).toEqual(['/opt/ghul-compiler']);
+        expect(cfg.source).not.toContain('proj-only/**/*.ghul');
+    });
+
     it('reads compiler and sources from a .ghulproj when ghul.json is silent', () => {
         const workspace = ws();
         const proj = `<?xml version="1.0"?>

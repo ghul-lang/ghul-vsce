@@ -112,6 +112,8 @@ describe('WorkspaceContext.initialize', () => {
             { scopeUri: `file://${WORKSPACE_ROOT}`, section: 'ghul.inlayHints.narrowing' },
             { scopeUri: `file://${WORKSPACE_ROOT}`, section: 'ghul.inlayHints.definitionVirtuality' },
             { scopeUri: `file://${WORKSPACE_ROOT}`, section: 'ghul.inlayHints.terminators' },
+            { scopeUri: `file://${WORKSPACE_ROOT}`, section: 'ghul.compilerHost' },
+            { scopeUri: `file://${WORKSPACE_ROOT}`, section: 'ghul.compilerPath' },
         ]);
         expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, {
             incremental_analysis: true,
@@ -119,6 +121,8 @@ describe('WorkspaceContext.initialize', () => {
             inlay_narrowing: null,
             inlay_definition_virtuality: null,
             inlay_terminators: null,
+            compiler_host: null,
+            compiler_path: null,
         }, null, expect.any(String));
     });
 

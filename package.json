@@ -89,6 +89,41 @@
           "scope": "resource",
           "markdownDescription": "Show a `∘︎` inlay hint at every statement terminator the parser inferred (left off at end of line). One hint per inferred boundary, so this is dense — pair it with `editor.inlayHints.enabled: offUnlessPressed`. Unset keeps the compiler default, which is off. Changing this restarts the analyser."
         },
+        "ghul.compilerHost": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "auto",
+            "dotnet",
+            "llvm",
+            "wasm"
+          ],
+          "default": null,
+          "scope": "resource",
+          "markdownDescription": "How the compiler that analyses a `ghul-project.json` project is run: `dotnet` the managed compiler, `llvm` the compiler built for llvm (a native executable, on Linux x64 and arm64), `wasm` the compiler built for wasm, under Node. `auto` lets the ghul tool choose, whatever `GHUL_COMPILER_HOST` says; unset leaves it to the ghul tool and the environment. A manifest's `compiler-build` is still the project's own choice. Needs the ghul tool 9.8.0 or later. Changing this restarts the analyser."
+        },
+        "ghul.compilerPath": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "scope": "machine-overridable",
+          "markdownDescription": "A compiler to analyse a `ghul-project.json` project with, in place of the one the ghul tool would install: a path to a native `ghul` executable, or a command such as `dotnet /path/to/ghul.dll`. Changing this restarts the analyser."
+        },
+        "ghul.projectFile": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "manifest"
+          ],
+          "default": "auto",
+          "scope": "window",
+          "markdownDescription": "Which file a project is read from where a folder holds both a `.ghulproj` and a `ghul-project.json`. `auto` takes the `.ghulproj`. `manifest` takes the `ghul-project.json`, and treats a nested project whose directory the manifest's `sources` cover as part of it rather than a project of its own."
+        },
         "ghul.analysers.max": {
           "type": "number",
           "default": 4,

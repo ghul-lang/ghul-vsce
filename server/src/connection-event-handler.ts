@@ -247,6 +247,10 @@ export class ConnectionEventHandler {
 
         const initial_cap = params.initializationOptions?.maxAnalysers;
 
+        // Read before any folder is looked at, since it decides which file
+        // each project is read from and which nested projects are its own.
+        this.extension_state.setPreferManifest(params.initializationOptions?.projectFile === 'manifest');
+
         if (typeof initial_cap === 'number') {
             this.extension_state.setMaxAnalysers(initial_cap);
         }
@@ -486,6 +490,22 @@ export class ConnectionEventHandler {
         for (const workspace of this.extension_state.allWorkspaces()) {
             workspace.reinitialize();
         }
+
+        this.readProjectFile();
+    }
+
+    // The `ghul.projectFile` setting, which finds the projects again where
+    // it changed.
+    private readProjectFile() {
+        if (!this.extension_state.clientSupportsConfiguration()) {
+            return;
+        }
+
+        Promise.resolve(
+            this.connection.workspace.getConfiguration('ghul.projectFile'),
+        ).then(value => {
+            this.extension_state.setPreferManifest(value === 'manifest');
+        }).catch(e => log(`could not read ghul.projectFile: ${e}`));
     }
 
     async onCompletion(textDocumentPosition: CompletionParams, token?: CancellationToken): Promise<CompletionItem[]> {

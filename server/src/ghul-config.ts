@@ -106,6 +106,8 @@ export interface EditorSettings {
 	inlay_narrowing?: boolean | null,
 	inlay_definition_virtuality?: boolean | null,
 	inlay_terminators?: boolean | null,
+	compiler_host?: string | null,
+	compiler_path?: string | null,
 }
 
 // Settings that govern how the extension behaves rather than how the project
@@ -304,7 +306,9 @@ export function getGhulConfig(
 
 	let project_excludes: string[] = [];
 
-	let projects = globSync(workspace + "/*.ghulproj");
+	// A ghul-project.json project takes nothing from a .ghulproj beside it:
+	// not its compiler, its sources nor its excludes.
+	let projects = manifest_compiler === undefined ? globSync(workspace + "/*.ghulproj") : [];
 
 	if (projects.length == 1) {
 		let ghulProjFileName = projects[0];

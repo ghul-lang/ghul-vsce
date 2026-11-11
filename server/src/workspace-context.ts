@@ -1,6 +1,7 @@
 import { pathToFileURL } from 'url';
 
 import { existsSync } from 'fs';
+import { join } from 'path';
 
 import {
     Connection,
@@ -30,7 +31,7 @@ import { restoreDotNetTools } from './restore-dotnet-tools';
 import { generateAssembliesJson } from './generate-assemblies-json';
 import { generateGhulOptionsJson } from './generate-ghul-options-json';
 import { generateResponseFile } from './generate-response-file';
-import { generateManifestResponseFile, isManifestProject, manifestCompiler } from './manifest-project';
+import { COMPILER_HOST_RELEASE, generateManifestResponseFile, hasGhulproj, isManifestProject, isOlder, manifestCompiler, toolArguments, toolVersion } from './manifest-project';
 import { TempDirectory } from './temp-directory';
 
 // How long to wait for the client to answer for its settings before falling
@@ -45,6 +46,10 @@ const CONFIGURATION_TIMEOUT_MS = 5_000;
 // as true.
 function asOptionalBoolean(value: unknown): boolean | null {
     return typeof value == 'boolean' ? value : null;
+}
+
+function asOptionalString(value: unknown): string | null {
+    return typeof value == 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
 // Bounds only the status bar, not correctness: whenAnalysed already holds
@@ -97,6 +102,10 @@ export class WorkspaceContext {
     // folder is registered when a file in it is first opened, so most of what
     // a large tree holds never starts a compiler.
     started: boolean = false;
+
+    // Whether a ghul-project.json is taken even beside a .ghulproj, as the
+    // `ghul.projectFile` setting `manifest` asks.
+    prefer_manifest: boolean = false;
 
     private initialize_running: Promise<void> | null = null;
     private initialize_queued: Promise<void> | null = null;
@@ -348,16 +357,24 @@ export class WorkspaceContext {
         // server manager to report in place of a generic complaint.
         let manifest_problems: string[] = [];
 
-        if (isManifestProject(this.workspace_root)) {
+        let settings = await this.readEditorSettings();
+
+        let manifest_route = isManifestProject(this.workspace_root, this.prefer_manifest);
+
+        log(`project ${this.workspace_root}: ${this.describeRoute(manifest_route)}`);
+
+        if (manifest_route) {
             this.progress.report(Activity.Setup, "resolving compiler options", { done_message: "compiler options resolved" });
 
-            let manifest_problem = await generateManifestResponseFile(this.workspace_root, response_file, source_globs_file);
+            let tool_arguments = this.toolArgumentsFor(settings, manifest_problems);
+
+            let manifest_problem = await generateManifestResponseFile(this.workspace_root, response_file, source_globs_file, tool_arguments);
             if (manifest_problem) {
                 manifest_problems.push(manifest_problem);
                 response_file = null;
             }
 
-            let found = manifestCompiler(this.workspace_root);
+            let found = manifestCompiler(this.workspace_root, tool_arguments);
 
             // A manifest ghul could not read fails both requests the same
             // way, so the second report would only repeat the first.
@@ -369,8 +386,6 @@ export class WorkspaceContext {
         } else {
             response_file = await this.resolveGhulprojOptions(problems, response_file, source_globs_file);
         }
-
-        let settings = await this.readEditorSettings();
 
         this.config = manifest_compiler === undefined
             ? getGhulConfig(this.workspace_root, settings, response_file, source_globs_file)
@@ -487,6 +502,55 @@ export class WorkspaceContext {
     // Never a reason for setup to fail. A client that does not support the
     // request, or answers it badly, leaves every setting unexpressed and the
     // project's own ghul.json decides.
+    // Which file the project is read from, and why, in the words the output
+    // channel shows.
+    private describeRoute(manifest_route: boolean): string {
+        let beside = hasGhulproj(this.workspace_root);
+
+        if (!manifest_route) {
+            return beside && existsSync(join(this.workspace_root, 'ghul-project.json'))
+                ? 'read from its .ghulproj, which is taken before the ghul-project.json beside it; set ghul.projectFile to manifest to take the manifest'
+                : 'read from its .ghulproj';
+        }
+
+        return beside
+            ? 'read from its ghul-project.json by the ghul tool, since ghul.projectFile is manifest'
+            : 'read from its ghul-project.json by the ghul tool';
+    }
+
+    // What the editor's settings pass the ghul tool. A tool too old for
+    // --compiler-host is told nothing, and the user is told why.
+    private toolArgumentsFor(settings: EditorSettings, problems: string[]): string[] {
+        let choice = { compiler_host: settings.compiler_host, compiler_path: settings.compiler_path };
+
+        if (choice.compiler_host) {
+            let version = toolVersion(this.workspace_root);
+
+            if (!version || isOlder(version, COMPILER_HOST_RELEASE)) {
+                let problem =
+                    `ghul.compilerHost needs the ghul tool ${COMPILER_HOST_RELEASE} or later, and the one found ` +
+                    `${version ? `is ${version}` : 'did not say its version'}; the setting is ignored until it is updated ` +
+                    `(dotnet tool update -g ghul.cli)`;
+
+                log(problem);
+                problems.push(problem);
+                choice.compiler_host = null;
+            } else {
+                log(`compiler host: ${choice.compiler_host}, from ghul.compilerHost`);
+            }
+        }
+
+        if (choice.compiler_path) {
+            log(`compiler: ${choice.compiler_path}, from ghul.compilerPath`);
+        }
+
+        if (!choice.compiler_host && !choice.compiler_path) {
+            log('compiler: as the ghul tool chooses it for the project');
+        }
+
+        return toolArguments(choice);
+    }
+
     private async readEditorSettings(): Promise<EditorSettings> {
         if (!this.client_supports_configuration || !this.connection?.workspace?.getConfiguration) {
             return {};
@@ -506,6 +570,8 @@ export class WorkspaceContext {
                     { scopeUri, section: 'ghul.inlayHints.narrowing' },
                     { scopeUri, section: 'ghul.inlayHints.definitionVirtuality' },
                     { scopeUri, section: 'ghul.inlayHints.terminators' },
+                    { scopeUri, section: 'ghul.compilerHost' },
+                    { scopeUri, section: 'ghul.compilerPath' },
                 ]),
                 new Promise<null>(resolve => {
                     setTimeout(() => resolve(null), CONFIGURATION_TIMEOUT_MS).unref?.();
@@ -524,6 +590,8 @@ export class WorkspaceContext {
                 inlay_narrowing,
                 inlay_definition_virtuality,
                 inlay_terminators,
+                compiler_host,
+                compiler_path,
             ] = answered;
 
             return {
@@ -532,6 +600,8 @@ export class WorkspaceContext {
                 inlay_narrowing: asOptionalBoolean(inlay_narrowing),
                 inlay_definition_virtuality: asOptionalBoolean(inlay_definition_virtuality),
                 inlay_terminators: asOptionalBoolean(inlay_terminators),
+                compiler_host: asOptionalString(compiler_host),
+                compiler_path: asOptionalString(compiler_path),
             };
         } catch (e) {
             log(`could not read editor settings: ${e}`);

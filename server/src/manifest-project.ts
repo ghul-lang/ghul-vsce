@@ -21,9 +21,9 @@ export const LOCKFILE = 'ghul-project.lock.json';
 const COMMAND = 'ghul';
 
 // A folder holding a .ghulproj is a .ghulproj project whether or not it also
-// holds a manifest: the manifest is only read when the ghul tool is asked to
-// build.
-export function isManifestProject(workspace: string): boolean {
+// holds a manifest, unless `prefer_manifest` says to take the manifest beside
+// it, as the `ghul.projectFile` setting `manifest` does.
+export function isManifestProject(workspace: string, prefer_manifest: boolean = false): boolean {
     let entries: string[];
 
     try {
@@ -32,7 +32,7 @@ export function isManifestProject(workspace: string): boolean {
         return false;
     }
 
-    if (!entries.includes(MANIFEST) || entries.some(e => e.endsWith('.ghulproj'))) {
+    if (!entries.includes(MANIFEST) || (!prefer_manifest && entries.some(e => e.endsWith('.ghulproj')))) {
         return false;
     }
 
@@ -98,6 +98,107 @@ export function withoutCommentsOrTrailingCommas(text: string): string {
     return result.replace(/,(\s*[}\]])/g, '$1');
 }
 
+// Whether a .ghulproj sits beside the manifest in `directory`.
+export function hasGhulproj(directory: string): boolean {
+    try {
+        return readdirSync(directory).some(e => e.endsWith('.ghulproj'));
+    } catch {
+        return false;
+    }
+}
+
+// The source globs a project manifest lists, relative to its directory, or
+// none where it cannot be read.
+export function manifestSources(directory: string): string[] {
+    try {
+        let text = readFileSync(join(directory, MANIFEST), 'utf-8').replace(/^\uFEFF/, '');
+        let sources = JSON.parse(withoutCommentsOrTrailingCommas(text))?.sources;
+
+        if (Array.isArray(sources)) {
+            return sources.filter((s: unknown): s is string => typeof s === 'string');
+        }
+    } catch {
+        // reported by the ghul tool when it reads the same manifest
+    }
+
+    return [];
+}
+
+// Whether the directory `relative` to a manifest is covered by one of its
+// source globs: the glob's fixed leading path names the directory or a
+// directory under it, so the manifest compiles sources there.
+export function coveredBySources(relative: string, sources: string[]): boolean {
+    let directory = relative.replace(/\\/g, '/').replace(/\/+$/, '');
+
+    return sources.some(source => {
+        let fixed: string[] = [];
+
+        for (let segment of source.replace(/\\/g, '/').replace(/^\.\//, '').split('/')) {
+            if (/[*?[\]{}]/.test(segment)) {
+                break;
+            }
+
+            fixed.push(segment);
+        }
+
+        let prefix = fixed.join('/');
+
+        return prefix === directory || prefix.startsWith(directory + '/');
+    });
+}
+
+// The arguments the editor's own settings add to the ghul tool's project
+// commands: the host to run the compiler with, and a compiler to run.
+export interface ToolChoice {
+    compiler_host?: string | null,
+    compiler_path?: string | null,
+}
+
+export function toolArguments(choice: ToolChoice | undefined): string[] {
+    let args: string[] = [];
+
+    if (choice?.compiler_host) {
+        args.push('--compiler-host', choice.compiler_host);
+    }
+
+    if (choice?.compiler_path) {
+        args.push('--compiler', choice.compiler_path);
+    }
+
+    return args;
+}
+
+// The first ghul tool release that takes `--compiler-host`.
+export const COMPILER_HOST_RELEASE = '9.8.0';
+
+// The ghul tool's own version, as `ghul version` reports it, or null where it
+// cannot be found out.
+export function toolVersion(workspace: string): string | null {
+    let result = spawnSync(COMMAND, ['version'], { encoding: 'utf-8', cwd: workspace });
+
+    if (result.error || result.status !== 0) {
+        return null;
+    }
+
+    let named = /^ghul (\d+\.\d+\.\d+)/m.exec(result.stdout ?? '');
+
+    return named ? named[1] : null;
+}
+
+// Whether version `a` is older than `b`, comparing major, minor and patch.
+export function isOlder(a: string, b: string): boolean {
+    let left = a.split('.').map(n => parseInt(n, 10));
+    let right = b.split('.').map(n => parseInt(n, 10));
+
+    for (let i = 0; i < 3; i++) {
+        if ((left[i] ?? 0) !== (right[i] ?? 0)) {
+            return (left[i] ?? 0) < (right[i] ?? 0);
+        }
+    }
+
+    return false;
+}
+
 // The first target the manifest lists where it lists more than one, for a
 // ghul tool that will not choose between several itself; null otherwise, and
 // when the manifest cannot be read, which the tool reports better than this
@@ -153,14 +254,15 @@ export function responseFileTarget(response_file: string): string | null {
 export function generateManifestResponseFile(
     workspace: string,
     response_file: string,
-    source_globs_file: string
+    source_globs_file: string,
+    tool_arguments: string[] = []
 ): Promise<string | null> {
     // So that whether each file is there afterwards says whether this run
     // wrote it, rather than whether some earlier one did.
     rmSync(response_file, { force: true });
     rmSync(source_globs_file, { force: true });
 
-    let args = ['project', 'response-file', '--output', response_file, '--source-globs', source_globs_file];
+    let args = ['project', 'response-file', '--output', response_file, '--source-globs', source_globs_file, ...tool_arguments];
 
     // The tool chooses the target as a build would: GHUL_TARGET, then the
     // manifest's preference, then what the machine can build. A tool too old
@@ -199,8 +301,8 @@ export function generateManifestResponseFile(
 // The command that runs the compiler the project builds with. Asked at every
 // setup rather than kept: with no compiler named in the manifest it is the
 // newest installed, so it can change when a compiler is installed.
-export function manifestCompiler(workspace: string): { compiler?: string[], problem?: string } {
-    let listed = spawnSync(COMMAND, ['project', 'compiler', '--json'], { encoding: 'utf-8', cwd: workspace });
+export function manifestCompiler(workspace: string, tool_arguments: string[] = []): { compiler?: string[], problem?: string } {
+    let listed = spawnSync(COMMAND, ['project', 'compiler', '--json', ...tool_arguments], { encoding: 'utf-8', cwd: workspace });
 
     if (!listed.error && listed.status === 0) {
         let argv = compilerArgv(listed.stdout);
@@ -214,7 +316,7 @@ export function manifestCompiler(workspace: string): { compiler?: string[], prob
 
     // A ghul command-line tool from before --json refuses the option and
     // prints the command as one shell-quoted line.
-    let result = spawnSync(COMMAND, ['project', 'compiler'], { encoding: 'utf-8', cwd: workspace });
+    let result = spawnSync(COMMAND, ['project', 'compiler', ...tool_arguments], { encoding: 'utf-8', cwd: workspace });
 
     if (result.error || result.status !== 0) {
         return { problem: describeFailure('find the compiler', result.error ?? new Error(`exit status ${result.status}`), result.stderr) };

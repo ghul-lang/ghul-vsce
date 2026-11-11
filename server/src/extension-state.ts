@@ -161,6 +161,36 @@ export class ExtensionState {
     // workspace initializes, and applied to folders added later too.
     private client_supports_configuration: boolean = false;
 
+    // Whether a folder's ghul-project.json is taken even beside a .ghulproj,
+    // as the `ghul.projectFile` setting `manifest` asks.
+    private prefer_manifest: boolean = false;
+
+    public get prefersManifest(): boolean {
+        return this.prefer_manifest;
+    }
+
+    // Takes the `ghul.projectFile` setting. A change finds the roots again
+    // and sets every started project up again under the new choice.
+    public setPreferManifest(prefer: boolean) {
+        if (prefer === this.prefer_manifest) {
+            return;
+        }
+
+        this.prefer_manifest = prefer;
+
+        for (const context of this.workspaces.values()) {
+            context.prefer_manifest = prefer;
+        }
+
+        this.rediscover();
+
+        for (const context of this.workspaces.values()) {
+            if (context.started) {
+                context.reinitialize();
+            }
+        }
+    }
+
     public clientSupportsConfiguration(): boolean {
         return this.client_supports_configuration;
     }
@@ -199,6 +229,7 @@ export class ExtensionState {
         const context = new WorkspaceContext(workspace_root, this.connection, this.documents);
 
         context.client_supports_configuration = this.client_supports_configuration;
+        context.prefer_manifest = this.prefer_manifest;
         context.response_handler.client_supports_refresh = this.client_supports_refresh;
         context.server_manager.on_process_change = () => this.scheduleAnnouncePool();
 
@@ -215,7 +246,7 @@ export class ExtensionState {
     // project, whether it has no marker or is a workspace or a collection,
     // is never an analyser root.
     public addFolder(folder: string): WorkspaceContext | null {
-        const found = discoverRoots(folder);
+        const found = discoverRoots(folder, this.prefer_manifest);
 
         this.discovered.set(folder, found);
 
@@ -263,7 +294,7 @@ export class ExtensionState {
     // the folder closes, and one that appeared starts when a file in it opens.
     public rediscover() {
         for (const folder of Array.from(this.discovered.keys())) {
-            this.discovered.set(folder, discoverRoots(folder));
+            this.discovered.set(folder, discoverRoots(folder, this.prefer_manifest));
         }
 
         this.applyBoundaries();
