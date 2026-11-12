@@ -8,9 +8,10 @@ import { LspClient } from './lsp-client';
 // A ghul-project.json project has no .ghulproj: the ghul command-line tool
 // writes the response file and source globs a .ghulproj build would, and
 // names the compiler. CI has no ghul tool, so a stub on the PATH stands in
-// for it, writing what the tool writes for a .NET-target project with no
-// dependencies - an empty response file and the manifest's source glob - and
-// naming the compiler from the fixture's tool manifest.
+// for it, writing an empty response file and the manifest's source glob, so
+// the project is analysed for .NET with no libraries, and naming the compiler
+// from the fixture's tool manifest. The real tool writes a --target line and
+// the libraries for a wasm or llvm target.
 //
 // Same requirements as the other tests in this tier: `dotnet` on PATH,
 // network access for the tool restore, and the server built first.

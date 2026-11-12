@@ -47,6 +47,14 @@ no workspace file is needed.
   nested projects its `sources` cover.
 - A workspace file listing each project as a folder keeps working as it did.
 
+A `ghul-project.json` project is read by the ghul command-line tool, which
+says what the project compiles and which compiler analyses it. The manifest
+is in the shape ghul 10.0.0 and later read, described in the
+[ghul-cli README](https://github.com/ghul-lang/ghul-cli#projects); one the
+tool refuses, such as one with the keys of the first version (`tools`,
+`options`, `prefer`, `engine`, `host` or `compiler-build`), is reported with the
+tool's own message, which names what replaced each key.
+
 Each project's analyser is a compiler process holding the whole project in
 memory, so the extension keeps at most `ghul.analysers.max` of them running
 (four unless you change it). A project with a visible editor always keeps its
