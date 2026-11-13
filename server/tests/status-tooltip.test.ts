@@ -1,5 +1,5 @@
 import {
-    AnalysisMetrics, PoolState, describeDetails, describeTooltip, formatMemory, relativeToFolders
+    AnalysisMetrics, PoolState, describeDetails, describeTooltip, describeUnavailable, formatMemory, relativeToFolders
 } from '../../client/src/status-tooltip';
 
 function metrics(root: string, extra: Partial<AnalysisMetrics> = {}): AnalysisMetrics {
@@ -116,5 +116,22 @@ describe('describeDetails', () => {
         expect(text).toContain('memory: 0.75GB');
         expect(text).toContain('incremental analysis: on, 75% of 8 edits');
         expect(text).toContain('full rebuild: 2');
+    });
+});
+
+describe('describeUnavailable', () => {
+    it('says nothing while every folder can be analysed', () => {
+        expect(describeUnavailable(new Map(), ['/work'])).toBeNull();
+    });
+
+    it('names each folder without an analyser and why, without the extension\'s own prefix', () => {
+        const unavailable = new Map([['/work/app', 'ghūl language extension: could not resolve the compiler options for ghul-project.json: ghul: GHUL_COMPILER_HOST is no longer read']]);
+
+        const text = describeUnavailable(unavailable, ['/work'])!;
+
+        expect(text).toContain('analysis unavailable in');
+        expect(text).toContain('app');
+        expect(text).toContain('GHUL_COMPILER_HOST is no longer read');
+        expect(text).not.toContain('ghūl language extension:');
     });
 });

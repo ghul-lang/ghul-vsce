@@ -9,7 +9,7 @@ import { ExtensionContext, StatusBarAlignment, commands, window, workspace } fro
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 
 import {
-	AnalysisMetrics, PoolState, describeDetails, describeTooltip, runningRoots
+	AnalysisMetrics, PoolState, describeDetails, describeTooltip, describeUnavailable, runningRoots
 } from './status-tooltip';
 
 export function activate(context: ExtensionContext) {
@@ -73,6 +73,9 @@ export function activate(context: ExtensionContext) {
 	// same way the codicons beside it do.
 	const BRAND_ICON = '$(ghul-logo)';
 
+	// Marks the status bar message that a workspace has no analyser.
+	const UNAVAILABLE_ICON = '$(warning)';
+
 	// The one phrase the server uses for all of its routine analysis — an edit
 	// being digested, the full check after a lull, a slow query. It stands for
 	// "the analyser is busy" and nothing more, so it is shown as the spinner
@@ -111,8 +114,13 @@ export function activate(context: ExtensionContext) {
 		const explained = entries.filter(entry => entry.message != ROUTINE_ANALYSIS_MESSAGE);
 		const entry = explained[explained.length - 1];
 
+		// A workspace with no analyser says so for as long as it lasts: the
+		// notification that reported it is gone once dismissed, and every
+		// query there is answered empty until the configuration changes.
+		const message = entry ? entry.message : unavailable.size ? `${UNAVAILABLE_ICON} analysis unavailable` : null;
+
 		statusBarItem.text =
-			`${BRAND_ICON}${entry ? ` ${entry.message}` : ''} ${running ? RUNNING_ICON : IDLE_ICON}`;
+			`${BRAND_ICON}${message ? ` ${message}` : ''} ${running ? RUNNING_ICON : IDLE_ICON}`;
 
 		statusBarItem.tooltip = describeMetrics();
 		statusBarItem.show();
@@ -182,12 +190,29 @@ export function activate(context: ExtensionContext) {
 	// What the server last said about which projects have an analyser running.
 	let pool: PoolState | null = null;
 
+	// Why analysis is unavailable, by workspace, for each workspace where it
+	// is: no compiler could be started until the configuration changes.
+	let unavailable = new Map<string, string>();
+
 	function workspaceFolders(): string[] {
 		return (workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
 	}
 
 	function describeMetrics(): string {
-		return describeTooltip(pool, metrics, workspaceFolders());
+		const tooltip = describeTooltip(pool, metrics, workspaceFolders());
+		const why = describeUnavailable(unavailable, workspaceFolders());
+
+		return why ? `${why}\n\n${tooltip}` : tooltip;
+	}
+
+	function setUnavailable(u: { workspace: string, reason: string | null }) {
+		if (u.reason === null) {
+			unavailable.delete(u.workspace);
+		} else {
+			unavailable.set(u.workspace, u.reason);
+		}
+
+		render();
 	}
 
 	function setMetrics(m: AnalysisMetrics) {
@@ -312,7 +337,8 @@ export function activate(context: ExtensionContext) {
 
 		context.subscriptions.push(
 			client.onNotification('ghul/metrics', (m: AnalysisMetrics) => setMetrics(m)),
-			client.onNotification('ghul/pool', (p: PoolState) => setPool(p))
+			client.onNotification('ghul/pool', (p: PoolState) => setPool(p)),
+			client.onNotification('ghul/unavailable', (u: { workspace: string, reason: string | null }) => setUnavailable(u))
 		);
 
 		// The editors the user can see, so the server keeps their projects'

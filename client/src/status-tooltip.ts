@@ -225,3 +225,22 @@ function describeIncremental(m: AnalysisMetrics): string[] {
 
 	return lines;
 }
+
+// Why analysis is unavailable in each folder that has none, one paragraph per
+// folder, or null where every folder can be analysed. Named relative to the
+// open folders, as the rest of the tooltip names projects.
+export function describeUnavailable(unavailable: Map<string, string>, folders: string[]): string | null {
+	if (unavailable.size === 0) {
+		return null;
+	}
+
+	const prefix = 'ghūl language extension: ';
+
+	return Array.from(unavailable.entries())
+		.map(([root, reason]) => {
+			const why = reason.startsWith(prefix) ? reason.substring(prefix.length) : reason;
+
+			return `analysis unavailable in ${relativeToFolders(root, folders)}: ${why}`;
+		})
+		.join('\n\n');
+}

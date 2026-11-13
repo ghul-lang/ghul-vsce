@@ -276,6 +276,36 @@ describe('Requester', () => {
         expect(fresh.analysed).toBe(false);
     });
 
+    it('answers a query at once with its empty answer once no compiler can be started', async () => {
+        requester.analysed = false;
+
+        events.failed('no compiler');
+
+        expect(requester.unavailable).toBe('no compiler');
+        await expect(requester.sendHover('file:///a.ghul', 0, 0)).resolves.toBeNull();
+        expect(stream.written.length).toBe(0);
+    });
+
+    it('releases queries already waiting with their empty answers when the compiler cannot be started', async () => {
+        requester.analysed = false;
+
+        const pending = requester.sendHover('file:///a.ghul', 0, 0);
+
+        events.failed('no compiler');
+
+        await expect(pending).resolves.toBeNull();
+        expect(stream.written.length).toBe(0);
+    });
+
+    it('holds queries again once a compiler starts after a failure', () => {
+        events.failed('no compiler');
+
+        events.starting();
+
+        expect(requester.unavailable).toBeNull();
+        expect(requester.analysed).toBe(false);
+    });
+
     it('a spawn (onStarting) resets analysed to false so queries wait for the new child', () => {
         expect(requester.analysed).toBe(true);
 

@@ -56,6 +56,7 @@ describe('ServerManager (state helpers)', () => {
                 showErrorMessage: jest.fn(),
                 showWarningMessage: jest.fn(),
             },
+            sendNotification: jest.fn(),
         };
 
         watchdog = new Watchdog(10000, () => {});
@@ -121,9 +122,8 @@ describe('ServerManager (state helpers)', () => {
 
     describe('abort', () => {
         it('moves to Aborted and emits the abort event on the bus', () => {
-            // The raw event name is 'aborted'; see server-event-emitter tests.
             const rawHandler = jest.fn();
-            serverEvents.on('aborted', rawHandler);
+            serverEvents.onAbort(rawHandler);
 
             manager.abort();
 
@@ -134,7 +134,7 @@ describe('ServerManager (state helpers)', () => {
         it('does nothing when Blocked', () => {
             manager.server_state = ServerState.Blocked;
             const rawHandler = jest.fn();
-            serverEvents.on('aborted', rawHandler);
+            serverEvents.onAbort(rawHandler);
 
             manager.abort();
 
@@ -148,7 +148,7 @@ describe('ServerManager (state helpers)', () => {
             const killingHandler = jest.fn();
             const rawAbortHandler = jest.fn();
             serverEvents.onKilling(killingHandler);
-            serverEvents.on('aborted', rawAbortHandler);
+            serverEvents.onAbort(rawAbortHandler);
 
             manager.child = { kill: jest.fn(() => { throw new Error('EPERM'); }) } as any;
 
@@ -165,7 +165,7 @@ describe('ServerManager (state helpers)', () => {
             const rawAbortHandler = jest.fn();
             serverEvents.onKilling(killing);
             serverEvents.onKilled(killed);
-            serverEvents.on('aborted', rawAbortHandler);
+            serverEvents.onAbort(rawAbortHandler);
 
             manager.child = undefined as any;
 
@@ -464,6 +464,38 @@ describe('ServerManager (state helpers)', () => {
 
             expect(message).toContain('unknown target fortran');
             expect(message).not.toContain('no ghūl compiler could be found');
+        });
+
+        it('tells the client analysis is unavailable, and why, once until a compiler starts', () => {
+            const failed = jest.fn();
+            serverEvents.onFailed(failed);
+
+            manager.ghul_config = {
+                ...baseConfig,
+                compiler: undefined as unknown as string[],
+                problems: ['ghul: GHUL_COMPILER_HOST is no longer read'],
+            };
+
+            manager.start();
+            manager.start();
+
+            const unavailable = (connection.sendNotification as jest.Mock).mock.calls
+                .filter(call => call[0] === 'ghul/unavailable');
+
+            expect(unavailable).toHaveLength(1);
+            expect(unavailable[0][1].workspace).toBe(TEST_WORKSPACE_ROOT);
+            expect(unavailable[0][1].reason).toContain('GHUL_COMPILER_HOST is no longer read');
+            expect(failed).toHaveBeenCalledWith(expect.stringContaining('GHUL_COMPILER_HOST is no longer read'));
+
+            manager.ghul_config = { ...baseConfig };
+
+            manager.start();
+
+            const cleared = (connection.sendNotification as jest.Mock).mock.calls
+                .filter(call => call[0] === 'ghul/unavailable');
+
+            expect(cleared).toHaveLength(2);
+            expect(cleared[1][1]).toEqual({ workspace: TEST_WORKSPACE_ROOT, reason: null });
         });
 
         it('says no compiler could be found when nothing explains why', () => {

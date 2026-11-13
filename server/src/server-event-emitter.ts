@@ -25,7 +25,7 @@ export class ServerEventEmitter extends EventEmitter {
     }
 
 	abort() {
-		this.emit('aborted');
+		this.emit('abort');
 	}
 
 	killing() {
@@ -34,6 +34,12 @@ export class ServerEventEmitter extends EventEmitter {
     
     killed() {
         this.emit('killed');
+    }
+
+    // The compiler cannot be started until the configuration changes, for
+    // the reason given.
+    failed(reason: string) {
+        this.emit('failed', reason);
     }
 
     onStarting(handler: () => void) {
@@ -62,5 +68,9 @@ export class ServerEventEmitter extends EventEmitter {
 
     onKilled(handler: () => void) {
         this.on('killed', handler);
+    }
+
+    onFailed(handler: (reason: string) => void) {
+        this.on('failed', handler);
     }
 }

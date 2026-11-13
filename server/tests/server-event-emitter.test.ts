@@ -64,26 +64,22 @@ describe('ServerEventEmitter', () => {
         expect(handler).toHaveBeenCalledTimes(1);
     });
 
-    // Bug pinned: abort() emits 'aborted' but onAbort() subscribes to 'abort'.
-    // Nothing in the codebase listens for 'aborted' directly, so onAbort
-    // handlers never fire today. This test pins observed behaviour so any
-    // future fix is a deliberate decision.
-    it('onAbort handlers do NOT fire when abort() is called (pinned bug)', () => {
+    it('fires onAbort when abort() is called', () => {
         const handler = jest.fn();
         emitter.onAbort(handler);
 
         emitter.abort();
 
-        expect(handler).not.toHaveBeenCalled();
+        expect(handler).toHaveBeenCalledTimes(1);
     });
 
-    it("abort() emits 'aborted' (raw listener fires)", () => {
+    it('passes the reason to onFailed', () => {
         const handler = jest.fn();
-        emitter.on('aborted', handler);
+        emitter.onFailed(handler);
 
-        emitter.abort();
+        emitter.failed('no compiler');
 
-        expect(handler).toHaveBeenCalledTimes(1);
+        expect(handler).toHaveBeenCalledWith('no compiler');
     });
 
     it('supports multiple handlers on the same event', () => {
