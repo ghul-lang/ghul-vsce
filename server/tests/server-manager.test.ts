@@ -122,9 +122,8 @@ describe('ServerManager (state helpers)', () => {
 
     describe('abort', () => {
         it('moves to Aborted and emits the abort event on the bus', () => {
-            // The raw event name is 'aborted'; see server-event-emitter tests.
             const rawHandler = jest.fn();
-            serverEvents.on('aborted', rawHandler);
+            serverEvents.onAbort(rawHandler);
 
             manager.abort();
 
@@ -135,7 +134,7 @@ describe('ServerManager (state helpers)', () => {
         it('does nothing when Blocked', () => {
             manager.server_state = ServerState.Blocked;
             const rawHandler = jest.fn();
-            serverEvents.on('aborted', rawHandler);
+            serverEvents.onAbort(rawHandler);
 
             manager.abort();
 
@@ -149,7 +148,7 @@ describe('ServerManager (state helpers)', () => {
             const killingHandler = jest.fn();
             const rawAbortHandler = jest.fn();
             serverEvents.onKilling(killingHandler);
-            serverEvents.on('aborted', rawAbortHandler);
+            serverEvents.onAbort(rawAbortHandler);
 
             manager.child = { kill: jest.fn(() => { throw new Error('EPERM'); }) } as any;
 
@@ -166,7 +165,7 @@ describe('ServerManager (state helpers)', () => {
             const rawAbortHandler = jest.fn();
             serverEvents.onKilling(killing);
             serverEvents.onKilled(killed);
-            serverEvents.on('aborted', rawAbortHandler);
+            serverEvents.onAbort(rawAbortHandler);
 
             manager.child = undefined as any;
 

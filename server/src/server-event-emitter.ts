@@ -25,7 +25,7 @@ export class ServerEventEmitter extends EventEmitter {
     }
 
 	abort() {
-		this.emit('aborted');
+		this.emit('abort');
 	}
 
 	killing() {
