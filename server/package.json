@@ -16,7 +16,7 @@
     "@types/file-url": "^2.0.0",
     "@types/recursive-readdir": "^2.2.4",
     "bindings": "^1.5.0",
-    "glob": "^13.0.6",
+    "glob": "^14.0.0",
     "minimatch": "^10.2.5",
     "recursive-readdir": "^2.2.3",
     "shell-quote": "^1.8.4",
