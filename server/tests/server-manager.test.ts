@@ -56,6 +56,7 @@ describe('ServerManager (state helpers)', () => {
                 showErrorMessage: jest.fn(),
                 showWarningMessage: jest.fn(),
             },
+            sendNotification: jest.fn(),
         };
 
         watchdog = new Watchdog(10000, () => {});
@@ -464,6 +465,38 @@ describe('ServerManager (state helpers)', () => {
 
             expect(message).toContain('unknown target fortran');
             expect(message).not.toContain('no ghūl compiler could be found');
+        });
+
+        it('tells the client analysis is unavailable, and why, once until a compiler starts', () => {
+            const failed = jest.fn();
+            serverEvents.onFailed(failed);
+
+            manager.ghul_config = {
+                ...baseConfig,
+                compiler: undefined as unknown as string[],
+                problems: ['ghul: GHUL_COMPILER_HOST is no longer read'],
+            };
+
+            manager.start();
+            manager.start();
+
+            const unavailable = (connection.sendNotification as jest.Mock).mock.calls
+                .filter(call => call[0] === 'ghul/unavailable');
+
+            expect(unavailable).toHaveLength(1);
+            expect(unavailable[0][1].workspace).toBe(TEST_WORKSPACE_ROOT);
+            expect(unavailable[0][1].reason).toContain('GHUL_COMPILER_HOST is no longer read');
+            expect(failed).toHaveBeenCalledWith(expect.stringContaining('GHUL_COMPILER_HOST is no longer read'));
+
+            manager.ghul_config = { ...baseConfig };
+
+            manager.start();
+
+            const cleared = (connection.sendNotification as jest.Mock).mock.calls
+                .filter(call => call[0] === 'ghul/unavailable');
+
+            expect(cleared).toHaveLength(2);
+            expect(cleared[1][1]).toEqual({ workspace: TEST_WORKSPACE_ROOT, reason: null });
         });
 
         it('says no compiler could be found when nothing explains why', () => {

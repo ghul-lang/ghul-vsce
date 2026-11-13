@@ -101,6 +101,10 @@ export class ServerManager {
 	server_state: ServerState;
 	ghul_config: GhulConfig;
 	workspace_root: string;
+
+	// Why analysis is unavailable here, as last told to the client, or null
+	// while it is not.
+	private unavailable_reason: string | null = null;
 	analysis_response_file: () => string;
 	edit_queue: EditQueue;
 	response_handler: ResponseHandler;
@@ -273,6 +277,8 @@ export class ServerManager {
 			);
 			return;
 		}
+
+		this.reportUnavailable(null);
 
 		// A response file of this workspace's own, outside the project, so
 		// multiple compilers in the same extension host don't stomp on each
@@ -472,6 +478,9 @@ export class ServerManager {
 
 		log(message);
 
+		this.event_emitter.failed(message);
+		this.reportUnavailable(message);
+
 		// Each new configuration retries, and one that fails for the same
 		// reason would otherwise raise the same error again.
 		if (message === this.last_failure) {
@@ -485,6 +494,20 @@ export class ServerManager {
 
 	state() {
 		return this.server_state;
+	}
+
+	// Tells the client whether analysis is unavailable in this workspace,
+	// and why, so the status bar can say so for as long as it lasts rather
+	// than only in a notification that is gone once dismissed. Sent only when
+	// the answer changes.
+	private reportUnavailable(reason: string | null) {
+		if (reason === this.unavailable_reason) {
+			return;
+		}
+
+		this.unavailable_reason = reason;
+
+		this.connection?.sendNotification?.('ghul/unavailable', { workspace: this.workspace_root, reason });
 	}
 
 	startListening() {

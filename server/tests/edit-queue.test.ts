@@ -500,6 +500,16 @@ describe('EditQueue', () => {
             expect(recorder.sendDocumentsCalls).toHaveLength(1);
         });
 
+        it('does not wait for a flush that cannot happen while no compiler can be started', async () => {
+            queue.reset();
+            queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+            queue.queueEdit3('file:///b.ghul', 1, 'b');
+
+            (recorder as unknown as { unavailable: string | null }).unavailable = 'no compiler';
+
+            await expect(queue.whenFlushed()).resolves.toBe(false);
+        });
+
         it('waits for the in-flight round trip, then flushes before resolving', async () => {
             queue.reset();
             queue.start([{ uri: 'file:///a.ghul', source: 't' }]);

@@ -731,6 +731,12 @@ export class EditQueue {
             return Promise.resolve(true);
         }
 
+        // With no compiler to send them to, the edits will not flush until
+        // the configuration changes, and the query is answered empty anyway.
+        if (this.requester.unavailable) {
+            return Promise.resolve(false);
+        }
+
         this.sendQueued("flush ahead of a query");
 
         // Flushed synchronously: the edit is already written ahead of the

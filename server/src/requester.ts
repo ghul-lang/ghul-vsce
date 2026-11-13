@@ -58,6 +58,10 @@ export class Requester {
     private added_references: string[] = [];
 
     private _analysed: boolean;
+
+    // Why no compiler can be started, or null while one can. Set when the
+    // server manager gives up, cleared when it next starts one.
+    unavailable: string | null = null;
     private analysed_waiters: (() => void)[] = [];
 
     stream: any;
@@ -94,6 +98,21 @@ export class Requester {
             // A fresh compiler child starts with no project state; hold
             // queries until its first compile completes.
             this.analysed = false;
+            this.unavailable = null;
+        });
+
+        // No compiler will start until the configuration changes, so a query
+        // held for one would only time out. Answer every waiting and later
+        // query at once with its empty answer instead.
+        server_event_emitter.onFailed((reason: string) => {
+            this.unavailable = reason;
+
+            const waiters = this.analysed_waiters;
+            this.analysed_waiters = [];
+
+            for (const waiter of waiters) {
+                waiter();
+            }
         });
 
         server_event_emitter.onRunning((child: ChildProcess) => {
@@ -139,6 +158,10 @@ export class Requester {
         // exit: the relaunch is paid for by a request that wants an answer.
         // The wait below then covers the cold start, as it already does for a
         // compiler that is starting for any other reason.
+        if (this.unavailable !== null) {
+            return Promise.resolve(fallback);
+        }
+
         this.ensure_running();
 
         if (this.analysed) {
@@ -185,6 +208,12 @@ export class Requester {
 
             const waiter = () => {
                 clearTimeout(timer);
+
+                if (this.unavailable !== null) {
+                    resolve(fallback);
+
+                    return;
+                }
 
                 this.watchdog.startWatchdogIfNotRunning();
 
