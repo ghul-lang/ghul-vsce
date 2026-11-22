@@ -12,6 +12,8 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import { URI } from 'vscode-uri';
 
+import { dirname } from 'path';
+
 import { ConnectionEventHandler } from './connection-event-handler';
 
 import { WorkspaceContext } from './workspace-context';
@@ -23,6 +25,7 @@ import { AnalyserPool } from './analyser-pool';
 import { normalizeFileUri } from './normalize-file-uri';
 
 import { boundaryExcludes, discoverRoots, DiscoveredRoots } from './project-roots';
+import { nearestTestRoot } from './test-root';
 
 import { log } from './log';
 
@@ -67,6 +70,17 @@ export class ExtensionState {
     // its own marker says so.
     private discovered: Map<string, DiscoveredRoots> = new Map();
 
+    // Tests found when a file in one was asked about and no project claimed
+    // it, each a project of its own. They are never looked for up front, and
+    // set no boundary on the project around them, whose sources they are
+    // already outside of.
+    private test_roots: Set<string> = new Set();
+
+    // The test each directory a file was asked about is in, or null for none,
+    // so a request does not walk the tree again. Forgotten whenever the roots
+    // are looked for again.
+    private test_root_of_directory: Map<string, string | null> = new Map();
+
     // Collections already announced, so the notice is given once each.
     private announced_collections: Set<string> = new Set();
 
@@ -102,6 +116,8 @@ export class ExtensionState {
     public reset() {
         this.workspaces.clear();
         this.discovered.clear();
+        this.test_roots.clear();
+        this.test_root_of_directory.clear();
         this.announced_collections.clear();
         this.pool = new AnalyserPool(4);
         this.visible = null;
@@ -293,6 +309,8 @@ export class ExtensionState {
     // started is stopped: a project whose marker went keeps its analyser until
     // the folder closes, and one that appeared starts when a file in it opens.
     public rediscover() {
+        this.test_root_of_directory.clear();
+
         for (const folder of Array.from(this.discovered.keys())) {
             this.discovered.set(folder, discoverRoots(folder, this.prefer_manifest));
         }
@@ -323,7 +341,7 @@ export class ExtensionState {
     // Every directory something is rooted at: a started workspace, a project
     // found and not started yet, and a collection.
     private knownRoots(): Set<string> {
-        const known = new Set<string>(this.workspaces.keys());
+        const known = new Set<string>(Array.from(this.workspaces.keys()).filter(root => !this.test_roots.has(root)));
 
         for (const found of this.discovered.values()) {
             found.projects.forEach(p => known.add(p));
@@ -562,9 +580,42 @@ export class ExtensionState {
 
         this.workspaces.forEach((_c, root) => consider(root, 'started'));
         this.pendingProjects().forEach(root => consider(root, 'pending'));
+
+        const test_root = this.testRootFor(fs_path);
+
+        if (test_root) {
+            consider(test_root, this.workspaces.has(test_root) ? 'started' : 'pending');
+        }
         this.collectionRoots().forEach(root => consider(root, 'collection'));
 
         return best ? `${(best as any).kind}:${(best as any).root}` : 'none';
+    }
+
+    // The test holding a file, where the file is under an open folder and a
+    // test's settings are found between the file and that folder.
+    private testRootFor(fs_path: string): string | null {
+        const directory = dirname(fs_path);
+        const known = this.test_root_of_directory.get(directory);
+
+        if (known !== undefined) {
+            return known;
+        }
+
+        let result: string | null = null;
+
+        for (const folder of this.discovered.keys()) {
+            if (this.isUnder(fs_path, folder)) {
+                const found = nearestTestRoot(fs_path, folder);
+
+                if (found && (!result || found.length > result.length)) {
+                    result = found;
+                }
+            }
+        }
+
+        this.test_root_of_directory.set(directory, result);
+
+        return result;
     }
 
     public unregisterWorkspace(workspace_root: string) {
@@ -577,6 +628,7 @@ export class ExtensionState {
         context.response_handler.clearPublishedDiagnostics?.();
         context.dispose();
         this.workspaces.delete(workspace_root);
+        this.test_roots.delete(workspace_root);
         this.pool.forget(workspace_root);
     }
 
@@ -651,6 +703,12 @@ export class ExtensionState {
 
         const candidates: Candidate[] = [];
 
+        const test_root = this.testRootFor(fs_path);
+
+        if (test_root && !this.workspaces.has(test_root)) {
+            candidates.push({ root: test_root, kind: 'pending' });
+        }
+
         for (const context of this.workspaces.values()) {
             if (this.isUnder(fs_path_normalised, context.workspace_root)) {
                 candidates.push({ root: context.workspace_root, context, kind: 'started' });
@@ -686,6 +744,10 @@ export class ExtensionState {
             if (candidate.kind === 'pending') {
                 const starts = use === Use.INTERACTIVE || (use === Use.PASSIVE && this.isVisible(uri));
 
+                if (starts && candidate.root === test_root) {
+                    this.test_roots.add(test_root);
+                }
+
                 if (use === Use.INTERACTIVE) {
                     this.pool.touch(candidate.root);
                 }
@@ -718,7 +780,7 @@ export class ExtensionState {
         }
 
         for (const change of params.changes) {
-            if (/(^|\/)(ghul-project\.json|[^/]+\.ghulproj)$/.test(change.uri)) {
+            if (/(^|\/)(ghul-project\.json|test\.json|[^/]+\.ghulproj)$/.test(change.uri)) {
                 this.scheduleRediscovery();
             }
 

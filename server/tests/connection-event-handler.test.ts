@@ -301,6 +301,7 @@ describe('ConnectionEventHandler', () => {
                         { globPattern: '**/dotnet-tools.json' },
                         { globPattern: '**/ghul-project.json' },
                         { globPattern: '**/ghul-project.lock.json' },
+                        { globPattern: '**/test.json' },
                         { globPattern: '**/.block-compiler' },
                     ],
                 },

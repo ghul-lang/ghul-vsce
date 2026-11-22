@@ -300,4 +300,50 @@ describe('ExtensionState pool', () => {
 
         expect(started()).toEqual(['a']);
     });
+    it('starts a test of its own for a file in it that no project claims, and leaves the project around it alone', () => {
+        write('compiler.ghulproj', '<Project/>');
+        write('integration-tests/execution/hello/test.json', '{}');
+
+        const own = state.addFolder(root)!;
+
+        expect(own.workspace_root).toBe(root);
+
+        (own as any).claimsSourceFile = (u: string) => !u.includes('integration-tests');
+        own.initializeDetached();
+
+        const workspace = state.getWorkspaceForUri(uri('integration-tests/execution/hello/test.ghul'));
+
+        expect(workspace?.workspace_root).toBe(join(root, 'integration-tests/execution/hello'));
+        expect(workspace?.started).toBe(true);
+        expect(own.boundary_excludes).toEqual([]);
+        expect(own.reinitialize).not.toHaveBeenCalled();
+    });
+
+    it('routes a file in a started test to that test', () => {
+        write('integration-tests/hello/test.json', '{}');
+        state.addFolder(root);
+
+        const first = state.getWorkspaceForUri(uri('integration-tests/hello/test.ghul'));
+        const second = state.getWorkspaceForUri(uri('integration-tests/hello/other.ghul'));
+
+        expect(second).toBe(first);
+        expect(state.allWorkspaces().map(w => w.workspace_root)).toEqual([join(root, 'integration-tests/hello')]);
+    });
+
+    it('makes a test folder opened on its own a project', () => {
+        write('test.json', '{}');
+
+        const own = state.addFolder(root);
+
+        expect(own?.workspace_root).toBe(root);
+    });
+
+    it('does not look above an open folder for a test', () => {
+        write('test.json', '{}');
+        project('inner');
+
+        state.addFolder(join(root, 'inner'));
+
+        expect(state.describeRoute(uri('inner/src/main.ghul'))).toBe(`started:${join(root, 'inner')}`);
+    });
 });

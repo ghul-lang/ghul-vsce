@@ -7,6 +7,7 @@ import { log } from './log';
 import { spawnSync } from 'child_process';
 import { parse, quote } from 'shell-quote';
 import { findDotNetToolsManifest } from './restore-dotnet-tools';
+import { isTestRoot, testRootCompiler } from './test-root';
 
 export interface GhulConfig {
 	block: boolean,
@@ -235,6 +236,13 @@ export function getGhulConfig(
 		try {
 			let buffer = '' + readFileSync(workspace + "/ghul.json", "utf-8").replace(/^\uFEFF/, '');
 			config = <GhulConfigJson>JSON.parse(buffer);
+
+			log(
+				`${workspace}/ghul.json is deprecated and a later release will not read it: ` +
+				`use <UpdateCompilerTool>true</UpdateCompilerTool> in the .ghulproj in place of update_compiler_tool, ` +
+				`the ghul.compilerPath, ghul.incrementalAnalysis and ghul.plaintextHover settings in place of ` +
+				`compiler, incremental_analysis and want_plaintext_hover, and a .ghulproj or ghul-project.json for the sources`
+			);
 		} catch (e) {
 			let problem = `could not load ghul.json: ${describeError(e)}`;
 			log(problem);
@@ -251,6 +259,15 @@ export function getGhulConfig(
 			compiler = parse(config.compiler).map(e => e.toString());
 		} else {
 			compiler = config.compiler;
+		}
+	}
+
+	// A test is analysed with the compiler ghul-test builds it with.
+	if (!compiler && manifest_compiler === undefined && isTestRoot(workspace)) {
+		const from_tests = testRootCompiler(workspace);
+
+		if (from_tests) {
+			compiler = from_tests;
 		}
 	}
 
@@ -491,7 +508,7 @@ export function getGhulConfig(
 	}
 
 	if (!compiler && manifest_compiler === undefined) {
-		let problem = "no usable ghūl compiler found: install the ghul.compiler tool or set 'compiler' in ghul.json";
+		let problem = "no usable ghūl compiler found: install the ghul.compiler tool or set ghul.compilerPath";
 		log(problem);
 		problems.push(problem);
 	}

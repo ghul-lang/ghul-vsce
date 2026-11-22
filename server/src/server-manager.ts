@@ -273,7 +273,7 @@ export class ServerManager {
 				"ghūl language extension: " +
 				(this.ghul_config.problems?.length
 					? this.ghul_config.problems.join("; ")
-					: "no ghūl compiler could be found. Install the ghul.compiler tool or set 'compiler' in ghul.json.")
+					: "no ghūl compiler could be found. Install the ghul.compiler tool or set ghul.compilerPath.")
 			);
 			return;
 		}
