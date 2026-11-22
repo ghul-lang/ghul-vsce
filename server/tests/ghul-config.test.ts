@@ -101,6 +101,46 @@ describe('getGhulConfig', () => {
         expect(cfg.arguments).toEqual(['--target', 'wasm', '-A', '--incremental-analysis']);
     });
 
+    it("prefers a tool manifest's compiler to the host's", () => {
+        const workspace = ws();
+        mkdirSync(join(workspace, '.config'));
+        writeJson(join(workspace, '.config'), 'dotnet-tools.json', {
+            version: 1,
+            isRoot: true,
+            tools: { 'ghul.compiler': { version: '1.0.0', commands: ['ghul-compiler'] } },
+        });
+
+        const cfg = getGhulConfig(workspace, {}, null, null, undefined, { compiler: ['from-host'] });
+
+        expect(cfg.compiler).toEqual(['dotnet', 'tool', 'run', 'ghul-compiler']);
+    });
+
+    it("prefers a .ghulproj's compiler to the host's, and takes no flags from the host", () => {
+        const workspace = ws();
+        writeFileSync(join(workspace, 'p.ghulproj'),
+            '<Project><PropertyGroup><GhulCompiler>from-project</GhulCompiler></PropertyGroup></Project>');
+
+        const cfg = getGhulConfig(workspace, {}, null, null, undefined, {
+            compiler: ['from-host'],
+            flags: ['--host-flag'],
+        });
+
+        expect(cfg.compiler).toEqual(['from-project']);
+        expect(cfg.arguments).not.toContain('--host-flag');
+    });
+
+    it("takes no flags from the host for a ghul-project.json project", () => {
+        const workspace = ws();
+
+        const cfg = getGhulConfig(workspace, {}, null, null, ['from-manifest'], {
+            compiler: ['from-host'],
+            flags: ['--host-flag'],
+        });
+
+        expect(cfg.compiler).toEqual(['from-manifest']);
+        expect(cfg.arguments).not.toContain('--host-flag');
+    });
+
     it("prefers a ghul.json's compiler and flags to the host's", () => {
         const workspace = ws();
         writeJson(workspace, 'ghul.json', {
