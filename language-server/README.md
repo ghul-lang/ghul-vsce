@@ -39,6 +39,18 @@ transport argument the server defaults to stdio.
 The workspace root the client reports must be the directory containing the
 `.ghulproj`, so the server can find the project and its tool manifest.
 
+## Initialization options
+
+A client can pass these in the `initializationOptions` of its `initialize`
+request:
+
+| Option | Meaning |
+|---|---|
+| `compiler` | The compiler command, as a command line or an array of its words, for a project that does not name one itself. |
+| `compilerFlags` | Flags to pass that compiler, as a command line or an array of words, for a project that does not name any itself. |
+| `maxAnalysers` | The most analysers to keep running at once. |
+| `projectFile` | `manifest` takes a folder's `ghul-project.json` even where a `.ghulproj` sits beside it. |
+
 ## Editor configuration
 
 ### Neovim

@@ -217,6 +217,16 @@ function readSourceGlobs(source_globs_file: string, problems: string[]): string[
 	}
 }
 
+// A compiler, and flags to pass it, named by a host that starts the server
+// and drives it itself, in the initializationOptions of its initialize
+// request: `compiler`, a command line or an array of its words, and
+// `compilerFlags`, likewise. They apply to a project that names neither in a
+// ghul.json.
+export interface HostCompiler {
+	compiler?: string[] | string,
+	flags?: string[] | string,
+}
+
 // manifest_compiler is set for a ghul-project.json project: the command
 // ghul named, or null when it named none, whose problem has been reported.
 // Either way such a project takes its compiler from ghul rather than from a
@@ -226,7 +236,8 @@ export function getGhulConfig(
 	settings: EditorSettings = {},
 	response_file: string | null = null,
 	source_globs_file: string | null = null,
-	manifest_compiler?: string[] | null
+	manifest_compiler?: string[] | null,
+	host: HostCompiler = {}
 ): GhulConfig {
 	let problems: string[] = [];
 
@@ -249,6 +260,9 @@ export function getGhulConfig(
 			problems.push(problem);
 		}
 	}
+
+	config.compiler ??= host.compiler;
+	config.other_flags ??= host.flags;
 
 	let config_json_source = config.source;
 

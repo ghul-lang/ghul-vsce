@@ -144,6 +144,7 @@ describe('ConnectionEventHandler', () => {
             clientSupportsConfiguration: jest.fn().mockReturnValue(false),
             setMaxAnalysers: jest.fn(),
             setPreferManifest: jest.fn(),
+            setHostCompiler: jest.fn(),
             setVisibleDocuments: jest.fn(),
             setClientSupportsRefresh: jest.fn(),
             allWorkspaces: jest.fn().mockReturnValue([]),
@@ -230,6 +231,23 @@ describe('ConnectionEventHandler', () => {
             handler.onInitialize({ rootPath: '/legacy/root' } as any);
 
             expect(extensionState.addFolder).toHaveBeenCalledWith('/legacy/root');
+        });
+
+        it('takes a compiler and compiler flags from initializationOptions', () => {
+            handler.onInitialize({
+                initializationOptions: { compiler: 'dotnet /opt/ghul.dll', compilerFlags: ['--target', 'wasm'] }
+            } as any);
+
+            expect(extensionState.setHostCompiler).toHaveBeenCalledWith({
+                compiler: 'dotnet /opt/ghul.dll',
+                flags: ['--target', 'wasm'],
+            });
+        });
+
+        it('ignores a compiler or compiler flags in initializationOptions that are not a command line', () => {
+            handler.onInitialize({ initializationOptions: { compiler: 42, compilerFlags: ['--ok', 7] } } as any);
+
+            expect(extensionState.setHostCompiler).toHaveBeenCalledWith({ compiler: undefined, flags: undefined });
         });
 
         it('registers nothing when the client opens a single file outside any workspace', () => {
@@ -869,6 +887,7 @@ describe('ConnectionEventHandler.onAddReferences', () => {
             clientSupportsConfiguration: jest.fn().mockReturnValue(false),
             setMaxAnalysers: jest.fn(),
             setPreferManifest: jest.fn(),
+            setHostCompiler: jest.fn(),
             setVisibleDocuments: jest.fn(),
             setClientSupportsRefresh: jest.fn(),
             allWorkspaces: jest.fn().mockReturnValue([]),

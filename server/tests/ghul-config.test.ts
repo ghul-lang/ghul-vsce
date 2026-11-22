@@ -89,6 +89,34 @@ describe('getGhulConfig', () => {
         expect(cfg.arguments).toEqual(['--flag-one', '--flag-two=value', '-A', '--incremental-analysis']);
     });
 
+    it('uses the compiler and flags a host names when the workspace names neither', () => {
+        const workspace = ws();
+
+        const cfg = getGhulConfig(workspace, {}, null, null, undefined, {
+            compiler: 'dotnet /opt/ghul.dll',
+            flags: ['--target', 'wasm'],
+        });
+
+        expect(cfg.compiler).toEqual(['dotnet', '/opt/ghul.dll']);
+        expect(cfg.arguments).toEqual(['--target', 'wasm', '-A', '--incremental-analysis']);
+    });
+
+    it("prefers a ghul.json's compiler and flags to the host's", () => {
+        const workspace = ws();
+        writeJson(workspace, 'ghul.json', {
+            compiler: ['from-json'],
+            other_flags: ['--json-flag'],
+        });
+
+        const cfg = getGhulConfig(workspace, {}, null, null, undefined, {
+            compiler: ['from-host'],
+            flags: ['--host-flag'],
+        });
+
+        expect(cfg.compiler).toEqual(['from-json']);
+        expect(cfg.arguments).toEqual(['--json-flag', '-A', '--incremental-analysis']);
+    });
+
     it('expands directory-only source entries into glob patterns when a .ghulproj is present', () => {
         // The expansion path only fires when ghul.json gives source and a
         // single .ghulproj is also discoverable. Pin that combined behaviour

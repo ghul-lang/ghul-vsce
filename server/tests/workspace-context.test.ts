@@ -123,7 +123,7 @@ describe('WorkspaceContext.initialize', () => {
             inlay_terminators: null,
             compiler_host: null,
             compiler_path: null,
-        }, null, expect.any(String));
+        }, null, expect.any(String), undefined, {});
     });
 
     it('treats a client that cannot answer as no preference expressed', async () => {
@@ -135,7 +135,7 @@ describe('WorkspaceContext.initialize', () => {
 
         await context.initialize();
 
-        expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, {}, null, expect.any(String));
+        expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, {}, null, expect.any(String), undefined, {});
         expect(context.config).toBeDefined();
     });
 
@@ -240,7 +240,7 @@ describe('WorkspaceContext.initialize', () => {
         expect(generateOrder).toBeLessThan(configOrder);
         expect(restoreDotNetToolsSpy).toHaveBeenCalledWith(WORKSPACE_ROOT);
         expect(generateAssembliesJsonSpy).toHaveBeenCalledWith(WORKSPACE_ROOT);
-        expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, expect.anything(), null, expect.any(String));
+        expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, expect.anything(), null, expect.any(String), undefined, {});
     });
 
     it('generates .ghul-options.json before reading it via getGhulConfig', async () => {

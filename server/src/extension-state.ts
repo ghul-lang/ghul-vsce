@@ -28,6 +28,7 @@ import { boundaryExcludes, discoverRoots, DiscoveredRoots } from './project-root
 import { nearestTestRoot } from './test-root';
 
 import { log } from './log';
+import { HostCompiler } from './ghul-config';
 
 // What a request or notification is for, which decides whether it may start an
 // analyser. An interactive use is the user asking for something and starts the
@@ -181,6 +182,18 @@ export class ExtensionState {
     // as the `ghul.projectFile` setting `manifest` asks.
     private prefer_manifest: boolean = false;
 
+    // The compiler and flags a host named in its initializationOptions, for
+    // every project, including those found later.
+    private host_compiler: HostCompiler = {};
+
+    public setHostCompiler(host: HostCompiler) {
+        this.host_compiler = host;
+
+        for (const context of this.workspaces.values()) {
+            context.host_compiler = host;
+        }
+    }
+
     public get prefersManifest(): boolean {
         return this.prefer_manifest;
     }
@@ -246,6 +259,7 @@ export class ExtensionState {
 
         context.client_supports_configuration = this.client_supports_configuration;
         context.prefer_manifest = this.prefer_manifest;
+        context.host_compiler = this.host_compiler;
         context.response_handler.client_supports_refresh = this.client_supports_refresh;
         context.server_manager.on_process_change = () => this.scheduleAnnouncePool();
 
