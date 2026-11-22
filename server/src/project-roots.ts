@@ -5,6 +5,7 @@ import { globSync } from 'glob';
 
 import { log } from './log';
 import { coveredBySources, isManifestProject, MANIFEST, manifestKind, manifestSources } from './manifest-project';
+import { isTestRoot } from './test-root';
 
 // What a directory is to the extension. A project is analysed; a workspace
 // owns no sources and lists the projects under it; a collection owns no
@@ -61,10 +62,11 @@ export function classify(directory: string): Classified | null {
     return null;
 }
 
-// A folder with no marker of its own but a ghul.json is still a project, as
-// it was before manifests could say otherwise.
-function isLegacyProject(directory: string): boolean {
-    return existsSync(join(directory, 'ghul.json'));
+// A folder opened that holds a test's settings is that test's project. One
+// with no marker of its own but a ghul.json is still a project too, as it was
+// before manifests could say otherwise.
+function isOpenedAsProject(directory: string): boolean {
+    return isTestRoot(directory) || existsSync(join(directory, 'ghul.json'));
 }
 
 // The directories a workspace's members name: each entry is a path or a glob
@@ -124,7 +126,7 @@ export function discoverRoots(folder: string, prefer_manifest: boolean = false):
         return result;
     }
 
-    if (own?.kind === 'project' || isLegacyProject(folder)) {
+    if (own?.kind === 'project' || isOpenedAsProject(folder)) {
         result.self = 'project';
     }
 

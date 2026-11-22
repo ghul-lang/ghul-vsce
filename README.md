@@ -46,6 +46,15 @@ no workspace file is needed.
   from its manifest under `ghul.projectFile` `manifest`, which takes in the
   nested projects its `sources` cover.
 - A workspace file listing each project as a folder keeps working as it did.
+- A directory holding a `test.json` is a test that
+  [ghul-test](https://github.com/ghul-lang/ghul-test) runs, analysed as a
+  project of its own. Tests are not looked for up front: opening a file that no
+  project compiles finds the nearest `test.json` above it, within the open
+  folder, and starts that test's analyser. A test folder opened on its own is
+  a project. A test is analysed with the compiler the default configuration of
+  the nearest `ghul-test.json` at or above it names, where that is a published
+  compiler, a compiler file or a command run on .NET, and otherwise with the
+  compiler found as for any project.
 
 A `ghul-project.json` project is read by the ghul command-line tool, which
 says what the project compiles and which compiler analyses it. The manifest
@@ -109,10 +118,14 @@ writes, and the one the analyser is launched with, both live in a directory
 of the extension's own under the system temporary directory, and go away with
 the workspace that owns them.
 
-A `ghul.json` in the workspace root is still read, and still sets
-`incremental_analysis` and `want_plaintext_hover` for a project that already
-does. An editor setting wins over it wherever the user has expressed a
-preference.
+A `ghul.json` in the workspace root is deprecated, and a later release stops
+reading it; the output channel says so when it reads one. Until then it still
+sets `incremental_analysis` and `want_plaintext_hover`, and an editor setting
+wins over it wherever the user has expressed a preference. Its replacements:
+`<UpdateCompilerTool>true</UpdateCompilerTool>` in the `.ghulproj` for
+`update_compiler_tool`, the `ghul.compilerPath`, `ghul.incrementalAnalysis` and
+`ghul.plaintextHover` settings for `compiler`, `incremental_analysis` and
+`want_plaintext_hover`, and a `.ghulproj` or `ghul-project.json` for `source`.
 
 ## Other editors
 

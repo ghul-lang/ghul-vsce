@@ -71,6 +71,7 @@ export const WATCHED_FILE_GLOBS = [
     '**/dotnet-tools.json',
     '**/ghul-project.json',
     '**/ghul-project.lock.json',
+    '**/test.json',
     '**/.block-compiler',
 ];
 
