@@ -73,6 +73,9 @@ function hostCompiler(options: any): HostCompiler {
     return {
         compiler: commandLine(options?.compiler),
         flags: commandLine(options?.compilerFlags),
+        references: Array.isArray(options?.references) && options.references.every((r: unknown) => typeof r === 'string')
+            ? options.references
+            : undefined,
     };
 }
 

@@ -101,6 +101,28 @@ describe('getGhulConfig', () => {
         expect(cfg.arguments).toEqual(['--target', 'wasm', '-A', '--incremental-analysis']);
     });
 
+    it('passes the references a host names, for a workspace with no .assemblies.json', () => {
+        const workspace = ws();
+
+        const cfg = getGhulConfig(workspace, {}, null, null, undefined, { references: ['/r/a.dll', '/r/b.dll'] });
+
+        expect(cfg.arguments).toEqual(['-a', '/r/a.dll', '-a', '/r/b.dll', '-A', '--incremental-analysis']);
+    });
+
+    it("prefers an .assemblies.json to the host's references, and takes none for a .ghulproj project", () => {
+        const with_json = ws();
+        writeJson(with_json, '.assemblies.json', { assemblies: [] });
+
+        expect(getGhulConfig(with_json, {}, null, null, undefined, { references: ['/r/a.dll'] }).arguments)
+            .not.toContain('/r/a.dll');
+
+        const with_project = ws();
+        writeFileSync(join(with_project, 'p.ghulproj'), '<Project></Project>');
+
+        expect(getGhulConfig(with_project, {}, null, null, undefined, { references: ['/r/a.dll'] }).arguments)
+            .not.toContain('/r/a.dll');
+    });
+
     it("prefers a tool manifest's compiler to the host's", () => {
         const workspace = ws();
         mkdirSync(join(workspace, '.config'));

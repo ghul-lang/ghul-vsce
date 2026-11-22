@@ -223,10 +223,14 @@ function readSourceGlobs(source_globs_file: string, problems: string[]): string[
 // `compilerFlags`, likewise. The compiler is used where the project names none
 // itself - in a ghul.json, its .ghulproj, a ghul-project.json or a tool
 // manifest - and the flags where the workspace has no project file and no
-// ghul.json names any.
+// ghul.json names any. `references`, the paths of the assemblies to analyse
+// against, likewise applies to a workspace with no project file, in place of
+// an .assemblies.json. A folder a host names a compiler for is a project of
+// its own, with no marker file needed.
 export interface HostCompiler {
 	compiler?: string[] | string,
 	flags?: string[] | string,
+	references?: string[],
 }
 
 // manifest_compiler is set for a ghul-project.json project: the command
@@ -263,9 +267,11 @@ export function getGhulConfig(
 		}
 	}
 
-	// A project's own build names its options, so the host's flags are only
-	// for a workspace with no project file of either kind.
-	if (manifest_compiler === undefined && globSync(workspace + "/*.ghulproj").length == 0) {
+	// A project's own build names its options and references, so the host's
+	// are only for a workspace with no project file of either kind.
+	const host_options_apply = manifest_compiler === undefined && globSync(workspace + "/*.ghulproj").length == 0;
+
+	if (host_options_apply) {
 		config.other_flags ??= host.flags;
 	}
 
@@ -579,6 +585,11 @@ export function getGhulConfig(
 			let problem = `could not load .assemblies.json: ${describeError(e)}`;
 			log(problem);
 			problems.push(problem);
+		}
+	} else if (!resolved_from_response_file && host_options_apply && host.references) {
+		for (let assembly of host.references) {
+			args.push("-a");
+			args.push(assembly);
 		}
 	}
 
