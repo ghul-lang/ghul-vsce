@@ -298,7 +298,7 @@ export class WorkspaceContext {
 
     // Run the per-workspace setup that depends on the on-disk project layout:
     // restore the local tool manifest, regenerate .assemblies.json, parse
-    // ghul.json/.ghulproj. Fires configAvailable, which is what wakes the
+    // the .ghulproj. Fires configAvailable, which is what wakes the
     // server manager and starts the compiler child.
     //
     // Runs off the initialize response, not inside it. The tool restore alone
@@ -501,8 +501,8 @@ export class WorkspaceContext {
     // multi-root workspace would get one answer for every folder.
     //
     // Never a reason for setup to fail. A client that does not support the
-    // request, or answers it badly, leaves every setting unexpressed and the
-    // project's own ghul.json decides.
+    // request, or answers it badly, leaves every setting unexpressed, and each
+    // takes its default.
     // Which file the project is read from, and why, in the words the output
     // channel shows.
     private describeRoute(manifest_route: boolean): string {

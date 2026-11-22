@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from 'fs';
+import { readdirSync, statSync } from 'fs';
 import { join, relative } from 'path';
 
 import { globSync } from 'glob';
@@ -62,11 +62,9 @@ export function classify(directory: string): Classified | null {
     return null;
 }
 
-// A folder opened that holds a test's settings is that test's project. One
-// with no marker of its own but a ghul.json is still a project too, as it was
-// before manifests could say otherwise.
+// A folder opened that holds a test's settings is that test's project.
 function isOpenedAsProject(directory: string): boolean {
-    return isTestRoot(directory) || existsSync(join(directory, 'ghul.json'));
+    return isTestRoot(directory);
 }
 
 // The directories a workspace's members name: each entry is a path or a glob

@@ -35,7 +35,23 @@ describe('getGhulConfig', () => {
         return w;
     }
 
-    it('returns sane defaults for an empty workspace (no ghul.json, no project, no tools)', () => {
+    it('reads nothing from a ghul.json', () => {
+        const workspace = ws();
+        writeJson(workspace, 'ghul.json', {
+            compiler: ['from-json'],
+            source: ['from-json'],
+            other_flags: ['--json-flag'],
+        });
+
+        const cfg = getGhulConfig(workspace, {}, null, null, undefined, { compiler: ['from-host'] });
+
+        expect(cfg.compiler).toEqual(['from-host']);
+        expect(cfg.source).toEqual(['./**/*.ghul']);
+        expect(cfg.arguments).toEqual(['-A', '--incremental-analysis']);
+        expect(cfg.problems).toEqual([]);
+    });
+
+    it('returns sane defaults for an empty workspace (no project, no tools)', () => {
         const workspace = ws();
         const cfg = getGhulConfig(workspace);
 
@@ -52,41 +68,6 @@ describe('getGhulConfig', () => {
 
         const cfg = getGhulConfig(workspace);
         expect(cfg.block).toBe(true);
-    });
-
-    it('uses compiler array from ghul.json verbatim', () => {
-        const workspace = ws();
-        writeJson(workspace, 'ghul.json', {
-            compiler: ['my-compiler', '--flag'],
-            source: ['src'],
-        });
-
-        const cfg = getGhulConfig(workspace);
-        expect(cfg.compiler).toEqual(['my-compiler', '--flag']);
-    });
-
-    it('parses compiler string from ghul.json via shell-quote', () => {
-        const workspace = ws();
-        writeJson(workspace, 'ghul.json', {
-            compiler: 'dotnet ghul-compiler --foo "bar baz"',
-            source: ['src'],
-        });
-
-        const cfg = getGhulConfig(workspace);
-        expect(cfg.compiler).toEqual(['dotnet', 'ghul-compiler', '--foo', 'bar baz']);
-    });
-
-    it('parses other_flags string into argument tokens', () => {
-        const workspace = ws();
-        writeJson(workspace, 'ghul.json', {
-            compiler: ['c'],
-            source: ['src'],
-            other_flags: '--flag-one --flag-two=value',
-        });
-
-        const cfg = getGhulConfig(workspace);
-        // -A is appended last; other_flags come before:
-        expect(cfg.arguments).toEqual(['--flag-one', '--flag-two=value', '-A', '--incremental-analysis']);
     });
 
     it('uses the compiler and flags a host names when the workspace names neither', () => {
@@ -163,75 +144,6 @@ describe('getGhulConfig', () => {
         expect(cfg.arguments).not.toContain('--host-flag');
     });
 
-    it("prefers a ghul.json's compiler and flags to the host's", () => {
-        const workspace = ws();
-        writeJson(workspace, 'ghul.json', {
-            compiler: ['from-json'],
-            other_flags: ['--json-flag'],
-        });
-
-        const cfg = getGhulConfig(workspace, {}, null, null, undefined, {
-            compiler: ['from-host'],
-            flags: ['--host-flag'],
-        });
-
-        expect(cfg.compiler).toEqual(['from-json']);
-        expect(cfg.arguments).toEqual(['--json-flag', '-A', '--incremental-analysis']);
-    });
-
-    it('expands directory-only source entries into glob patterns when a .ghulproj is present', () => {
-        // The expansion path only fires when ghul.json gives source and a
-        // single .ghulproj is also discoverable. Pin that combined behaviour
-        // so a future refactor surfaces if it diverges:
-        const workspace = ws();
-        writeJson(workspace, 'ghul.json', {
-            compiler: ['c'],
-            source: ['src', 'lib/dotnet'],
-        });
-        writeFileSync(
-            join(workspace, 'test.ghulproj'),
-            `<?xml version="1.0"?><Project Sdk="Ghul.Sdk"><PropertyGroup/></Project>`
-        );
-
-        const cfg = getGhulConfig(workspace);
-        expect(cfg.source).toEqual(['src/**/*.ghul', 'lib/dotnet/**/*.ghul']);
-    });
-
-    it('leaves source entries unchanged when no .ghulproj is present', () => {
-        // Pin observed behaviour: without a .ghulproj, ghul.json source entries
-        // are NOT expanded. This is probably surprising — flagged for review.
-        const workspace = ws();
-        writeJson(workspace, 'ghul.json', {
-            compiler: ['c'],
-            source: ['src', 'lib/dotnet'],
-        });
-
-        const cfg = getGhulConfig(workspace);
-        expect(cfg.source).toEqual(['src', 'lib/dotnet']);
-    });
-
-    it('passes want_plaintext_hover through from ghul.json', () => {
-        const workspace = ws();
-        writeJson(workspace, 'ghul.json', {
-            compiler: ['c'],
-            want_plaintext_hover: true,
-        });
-
-        const cfg = getGhulConfig(workspace);
-        expect(cfg.want_plaintext_hover).toBe(true);
-    });
-
-    it('strips a UTF-8 BOM from ghul.json', () => {
-        const workspace = ws();
-        writeFileSync(
-            join(workspace, 'ghul.json'),
-            '﻿' + JSON.stringify({ compiler: ['c'], source: ['src'] })
-        );
-
-        const cfg = getGhulConfig(workspace);
-        expect(cfg.compiler).toEqual(['c']);
-    });
-
     it('reads compiler from .config/dotnet-tools.json when no other source has set it', () => {
         const workspace = ws();
         mkdirSync(join(workspace, '.config'));
@@ -250,23 +162,8 @@ describe('getGhulConfig', () => {
         expect(cfg.compiler).toEqual(['dotnet', 'tool', 'run', 'ghul-compiler']);
     });
 
-    it('prefers ghul.json compiler over the tool manifest', () => {
-        const workspace = ws();
-        mkdirSync(join(workspace, '.config'));
-        writeJson(workspace, '.config/dotnet-tools.json', {
-            version: 1,
-            isRoot: true,
-            tools: { 'ghul.compiler': { version: '0.6.30', commands: ['ghul-compiler'] } },
-        });
-        writeJson(workspace, 'ghul.json', { compiler: ['explicit-compiler'] });
-
-        const cfg = getGhulConfig(workspace);
-        expect(cfg.compiler).toEqual(['explicit-compiler']);
-    });
-
     it('appends -a entries from .assemblies.json', () => {
         const workspace = ws();
-        writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
 
         const a = join(workspace, 'A.dll');
         const b = join(workspace, 'B.dll');
@@ -280,7 +177,7 @@ describe('getGhulConfig', () => {
         expect(cfg.arguments).toEqual([
             '-a', a,
             '-a', b,
-            
+
 '-A',
                 '--incremental-analysis',
             ]);
@@ -293,7 +190,6 @@ describe('getGhulConfig', () => {
         // and dies on the first one it cannot open, so an absent assembly has
         // to be left out and reported instead.
         const workspace = ws();
-        writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
 
         const present = join(workspace, 'Present.dll');
 
@@ -317,7 +213,6 @@ describe('getGhulConfig', () => {
         // does not silently start fabricating fake `-a` entries (or
         // dropping `-A` from the empty case).
         const workspace = ws();
-        writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
         // No .assemblies.json on disk.
 
         const cfg = getGhulConfig(workspace);
@@ -330,7 +225,6 @@ describe('getGhulConfig', () => {
         // a parse of the .ghulproj alone cannot see.
         it('prefers them over everything else', () => {
             const workspace = ws();
-            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['from-ghul-json'] });
 
             const response_file = join(workspace, 'project.rsp');
             const globs_file = join(workspace, 'source-globs.txt');
@@ -346,11 +240,10 @@ describe('getGhulConfig', () => {
             // gets nothing from the one that exists. Either way the previous
             // resolution stands.
             const workspace = ws();
-            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['from-ghul-json'] });
 
             const cfg = getGhulConfig(workspace, {}, join(workspace, 'project.rsp'), join(workspace, 'never-written.txt'));
 
-            expect(cfg.source).toEqual(['from-ghul-json']);
+            expect(cfg.source).toEqual(['./**/*.ghul']);
         });
     });
 
@@ -394,7 +287,7 @@ describe('getGhulConfig', () => {
         expect(cfg.source).not.toContain('proj-only/**/*.ghul');
     });
 
-    it('reads compiler and sources from a .ghulproj when ghul.json is silent', () => {
+    it('reads compiler and sources from a .ghulproj', () => {
         const workspace = ws();
         const proj = `<?xml version="1.0"?>
 <Project Sdk="Ghul.Sdk">
@@ -447,16 +340,6 @@ describe('getGhulConfig', () => {
 
             expect(cfg.source).toEqual(['tasks/**/*.ghul', 'root/**/*.ghul']);
             expect(cfg.exclude).toEqual(['tasks/**/stand-in.ghul', 'tasks/**/scratch.ghul']);
-        });
-
-        it('does not apply to sources ghul.json names', () => {
-            const workspace = ws();
-            writeFileSync(join(workspace, 'test.ghulproj'), project);
-            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
-
-            const cfg = getGhulConfig(workspace);
-
-            expect(cfg.exclude).toEqual([]);
         });
 
         it('is skipped when the item carries a Condition', () => {
@@ -540,7 +423,6 @@ describe('getGhulConfig', () => {
 
     it('records a problem for malformed .ghul-options.json instead of throwing', () => {
         const workspace = ws();
-        writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
         writeFileSync(join(workspace, '.ghul-options.json'), 'not json at all');
 
         let cfg!: ReturnType<typeof getGhulConfig>;
@@ -556,11 +438,10 @@ describe('getGhulConfig', () => {
 </Project>`;
         writeFileSync(join(workspace, 'a.ghulproj'), proj);
         writeFileSync(join(workspace, 'b.ghulproj'), proj);
-        writeJson(workspace, 'ghul.json', { compiler: ['from-json'] });
 
-        const cfg = getGhulConfig(workspace);
-        // Compiler must come from ghul.json (or fallback), not the proj files:
-        expect(cfg.compiler).toEqual(['from-json']);
+        const cfg = getGhulConfig(workspace, {}, null, null, undefined, { compiler: ['from-host'] });
+        // Compiler must come from the fallback, not the proj files:
+        expect(cfg.compiler).toEqual(['from-host']);
     });
 
     describe('problem reporting', () => {
@@ -570,19 +451,9 @@ describe('getGhulConfig', () => {
 
         it('records no problems for a cleanly-configured workspace', () => {
             const workspace = ws();
-            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
 
-            const cfg = getGhulConfig(workspace);
+            const cfg = getGhulConfig(workspace, {}, null, null, undefined, { compiler: ['c'] });
             expect(cfg.problems).toEqual([]);
-        });
-
-        it('records a problem for malformed ghul.json instead of throwing', () => {
-            const workspace = ws();
-            writeFileSync(join(workspace, 'ghul.json'), '{ this is not json');
-
-            let cfg!: ReturnType<typeof getGhulConfig>;
-            expect(() => { cfg = getGhulConfig(workspace); }).not.toThrow();
-            expect(cfg.problems.some(p => p.includes('ghul.json'))).toBe(true);
         });
 
         it('records a problem for an unparseable .ghulproj instead of throwing', () => {
@@ -596,8 +467,7 @@ describe('getGhulConfig', () => {
 
         it('records a problem for malformed .assemblies.json instead of throwing', () => {
             const workspace = ws();
-            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
-            writeFileSync(join(workspace, '.assemblies.json'), 'not json at all');
+                writeFileSync(join(workspace, '.assemblies.json'), 'not json at all');
 
             let cfg!: ReturnType<typeof getGhulConfig>;
             expect(() => { cfg = getGhulConfig(workspace); }).not.toThrow();
@@ -615,7 +485,7 @@ describe('getGhulConfig', () => {
         });
 
         it('records a problem when no compiler can be resolved', () => {
-            // An empty workspace has no ghul.json compiler, no tool manifest
+            // An empty workspace names no compiler, has no tool manifest
             // and (in the test environment) no installed ghul-compiler.
             const workspace = ws();
 
@@ -632,7 +502,6 @@ describe('getGhulConfig', () => {
         // .assemblies.json, which carried the same two things as JSON.
         it('takes both options and -a entries from it', () => {
             const workspace = ws();
-            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
 
             const a = join(workspace, 'A.dll');
             const b = join(workspace, 'B.dll');
@@ -661,7 +530,6 @@ describe('getGhulConfig', () => {
         // anything has built it.
         it('withholds -a entries for assemblies that do not exist yet', () => {
             const workspace = ws();
-            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
 
             const present = join(workspace, 'Present.dll');
             writeFileSync(present, '');
@@ -679,7 +547,6 @@ describe('getGhulConfig', () => {
 
         it('leaves the JSON files it supersedes unread', () => {
             const workspace = ws();
-            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
 
             const from_response_file = join(workspace, 'FromResponseFile.dll');
             const from_json = join(workspace, 'FromJson.dll');
@@ -703,7 +570,6 @@ describe('getGhulConfig', () => {
         // nothing at it. Either way the JSON files are still the answer.
         it('falls back to the JSON files when it was never written', () => {
             const workspace = ws();
-            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
 
             const a = join(workspace, 'A.dll');
             writeFileSync(a, '');
@@ -719,8 +585,7 @@ describe('getGhulConfig', () => {
 
 // Settings that govern how the extension behaves belong to the editor, where
 // they are discoverable and overridable per user, per workspace and per
-// folder. ghul.json keeps a say so a project that already sets one is not
-// broken by the move, but it is the weaker voice.
+// folder, and nowhere else.
 describe('getGhulConfig editor settings', () => {
     let workspace: string;
 
@@ -761,25 +626,11 @@ describe('getGhulConfig editor settings', () => {
         expect(cfg.arguments).toContain('--no-incremental-analysis');
     });
 
-    it('falls back to ghul.json when the user has expressed no preference', () => {
-        writeGhulJson({ incremental_analysis: true });
+    it('takes plaintext hover from the editor setting alone', () => {
+        writeGhulJson({ want_plaintext_hover: true, incremental_analysis: false });
 
+        expect(getGhulConfig(workspace, {}).want_plaintext_hover).toBe(false);
         expect(getGhulConfig(workspace, {}).incremental_analysis).toBe(true);
-        expect(getGhulConfig(workspace, { incremental_analysis: null }).incremental_analysis).toBe(true);
-    });
-
-    it('lets the editor setting turn off what ghul.json turned on', () => {
-        // Unset and off have to be different, or a project file could never be
-        // overridden from the editor.
-        writeGhulJson({ incremental_analysis: true });
-
-        expect(getGhulConfig(workspace, { incremental_analysis: false }).incremental_analysis).toBe(false);
-    });
-
-    it('applies the same precedence to plaintext hover', () => {
-        writeGhulJson({ want_plaintext_hover: true });
-
-        expect(getGhulConfig(workspace, {}).want_plaintext_hover).toBe(true);
-        expect(getGhulConfig(workspace, { want_plaintext_hover: false }).want_plaintext_hover).toBe(false);
+        expect(getGhulConfig(workspace, { want_plaintext_hover: true }).want_plaintext_hover).toBe(true);
     });
 });

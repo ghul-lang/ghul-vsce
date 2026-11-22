@@ -39,12 +39,11 @@ interface GhulOptionsFileJson {
 	options?: string
 }
 
-interface GhulConfigJson {
-	compiler?: string[] | string,
+// What the project file and the host say about the build, gathered while
+// the configuration is read.
+interface ProjectSettings {
 	source?: string[],
 	other_flags?: string[] | string,
-	want_plaintext_hover?: boolean,
-	incremental_analysis?: boolean,
 	update_compiler_tool?: boolean
 }
 
@@ -100,7 +99,7 @@ function describeError(e: unknown): string {
 // What the editor's own settings say, once its User / Workspace / Workspace
 // Folder layers have been resolved into one value per setting. Null means the
 // user has expressed no preference, which is distinct from having chosen the
-// default: only then does ghul.json get a say.
+// default.
 export interface EditorSettings {
 	incremental_analysis?: boolean | null,
 	want_plaintext_hover?: boolean | null,
@@ -109,16 +108,6 @@ export interface EditorSettings {
 	inlay_terminators?: boolean | null,
 	compiler_host?: string | null,
 	compiler_path?: string | null,
-}
-
-// Settings that govern how the extension behaves rather than how the project
-// is built belong to the editor, where they are discoverable, validated and
-// overridable per user, per workspace and per folder. ghul.json is still read
-// for them, so a project that already sets one keeps working, but it is the
-// weaker voice and the project file is the right home for anything that
-// genuinely changes the build.
-function prefer(setting: boolean | null | undefined, from_json: boolean | undefined, when_unset: boolean): boolean {
-	return setting ?? from_json ?? when_unset;
 }
 
 // One line of the build's response file, tokenized. A line is one flag with
@@ -221,9 +210,8 @@ function readSourceGlobs(source_globs_file: string, problems: string[]): string[
 // and drives it itself, in the initializationOptions of its initialize
 // request: `compiler`, a command line or an array of its words, and
 // `compilerFlags`, likewise. The compiler is used where the project names none
-// itself - in a ghul.json, its .ghulproj, a ghul-project.json or a tool
-// manifest - and the flags where the workspace has no project file and no
-// ghul.json names any. `references`, the paths of the assemblies to analyse
+// itself - in its .ghulproj, a ghul-project.json or a tool manifest - and the
+// flags where the workspace has no project file. `references`, the paths of the assemblies to analyse
 // against, likewise applies to a workspace with no project file, in place of
 // an .assemblies.json. A folder a host names a compiler for is a project of
 // its own, with no marker file needed.
@@ -247,24 +235,15 @@ export function getGhulConfig(
 ): GhulConfig {
 	let problems: string[] = [];
 
-	let config: GhulConfigJson = {};
+	let config: ProjectSettings = {};
 
 	if (existsSync(workspace + "/ghul.json")) {
-		try {
-			let buffer = '' + readFileSync(workspace + "/ghul.json", "utf-8").replace(/^\uFEFF/, '');
-			config = <GhulConfigJson>JSON.parse(buffer);
-
-			log(
-				`${workspace}/ghul.json is deprecated and a later release will not read it: ` +
-				`use <UpdateCompilerTool>true</UpdateCompilerTool> in the .ghulproj in place of update_compiler_tool, ` +
-				`the ghul.compilerPath, ghul.incrementalAnalysis and ghul.plaintextHover settings in place of ` +
-				`compiler, incremental_analysis and want_plaintext_hover, and a .ghulproj or ghul-project.json for the sources`
-			);
-		} catch (e) {
-			let problem = `could not load ghul.json: ${describeError(e)}`;
-			log(problem);
-			problems.push(problem);
-		}
+		log(
+			`${workspace}/ghul.json is no longer read: ` +
+			`use <UpdateCompilerTool>true</UpdateCompilerTool> in the .ghulproj in place of update_compiler_tool, ` +
+			`the ghul.compilerPath, ghul.incrementalAnalysis and ghul.plaintextHover settings in place of ` +
+			`compiler, incremental_analysis and want_plaintext_hover, and a .ghulproj or ghul-project.json for the sources`
+		);
 	}
 
 	// A project's own build names its options and references, so the host's
@@ -275,17 +254,7 @@ export function getGhulConfig(
 		config.other_flags ??= host.flags;
 	}
 
-	let config_json_source = config.source;
-
 	let compiler: string[];
-
-	if (config.compiler) {
-		if (typeof config.compiler == "string") {
-			compiler = parse(config.compiler).map(e => e.toString());
-		} else {
-			compiler = config.compiler;
-		}
-	}
 
 	// A test is analysed with the compiler ghul-test builds it with.
 	if (!compiler && manifest_compiler === undefined && isTestRoot(workspace)) {
@@ -404,7 +373,7 @@ export function getGhulConfig(
 							);
 					}
 
-					if (!config.source?.length && projectXml.Project.ItemGroup) {
+					if (projectXml.Project.ItemGroup) {
 						let patterns: string[] = [];
 
 						projectXml.Project.ItemGroup
@@ -436,8 +405,6 @@ export function getGhulConfig(
 						if (patterns.length) {
 							config.source = patterns;
 						}
-					} else if(config.source) {
-						config.source = config.source.map(directory => directory + "/**/*.ghul");
 					}
 
 					// Fallback for a project on a ghul.runtime older than
@@ -595,7 +562,7 @@ export function getGhulConfig(
 
 	args.push("-A");
 
-	let incremental_analysis = prefer(settings.incremental_analysis, config.incremental_analysis, true);
+	let incremental_analysis = settings.incremental_analysis ?? true;
 
 	if (incremental_analysis) {
 		args.push("--incremental-analysis");
@@ -627,13 +594,9 @@ export function getGhulConfig(
 	// actually compiles rather than this reader's guess at them.
 	let published_globs = source_globs_file ? readSourceGlobs(source_globs_file, problems) : null;
 
-	let ghul_json_names_sources = !!config_json_source?.length;
-
 	let source = [...(published_globs ?? config.source ?? ["./**/*.ghul"])];
 
-	// Sources ghul.json names are its own answer, and the project file's
-	// excludes say nothing about them.
-	let exclude = published_globs || !ghul_json_names_sources ? project_excludes : [];
+	let exclude = project_excludes;
 
     return {
 		block,
@@ -641,7 +604,7 @@ export function getGhulConfig(
 		source,
 		exclude,
 		arguments: args,
-		want_plaintext_hover: prefer(settings.want_plaintext_hover, config.want_plaintext_hover, false),
+		want_plaintext_hover: settings.want_plaintext_hover ?? false,
 		incremental_analysis,
 		missing_assemblies,
 		problems
