@@ -118,10 +118,8 @@ writes, and the one the analyser is launched with, both live in a directory
 of the extension's own under the system temporary directory, and go away with
 the workspace that owns them.
 
-A `ghul.json` in the workspace root is deprecated, and a later release stops
-reading it; the output channel says so when it reads one. Until then it still
-sets `incremental_analysis` and `want_plaintext_hover`, and an editor setting
-wins over it wherever the user has expressed a preference. Its replacements:
+A `ghul.json` in the workspace root is no longer read, and the output channel
+says so when it finds one. Its replacements:
 `<UpdateCompilerTool>true</UpdateCompilerTool>` in the `.ghulproj` for
 `update_compiler_tool`, the `ghul.compilerPath`, `ghul.incrementalAnalysis` and
 `ghul.plaintextHover` settings for `compiler`, `incremental_analysis` and

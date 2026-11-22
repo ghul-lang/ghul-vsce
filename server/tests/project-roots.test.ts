@@ -99,10 +99,10 @@ describe('discoverRoots', () => {
         expect(relativeTo(discoverRoots(root, false).projects)).toEqual(['llvm', 'unit-tests', 'wasm']);
     });
 
-    it('treats a folder with only a legacy ghul.json as a project', () => {
+    it('does not take a folder with only a ghul.json for a project', () => {
         write('ghul.json', '{}');
 
-        expect(discoverRoots(root).self).toBe('project');
+        expect(discoverRoots(root).self).not.toBe('project');
     });
 
     it('takes a workspace manifest\'s members and does not scan', () => {

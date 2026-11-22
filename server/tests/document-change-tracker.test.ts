@@ -282,8 +282,7 @@ describe('DocumentChangeTracker', () => {
         });
     });
 });
-// A project with no .ghulproj takes its sources from ghul.json, whose default
-// glob is `./**/*.ghul`. Made absolute without normalising, that glob has a
+// A project that names no sources takes the default glob, `./**/*.ghul`. Made absolute without normalising, that glob has a
 // literal `.` segment and matches no file, so every document in such a project
 // was refused by the router and never analysed.
 describe('rootedGlob', () => {
@@ -303,7 +302,7 @@ describe('rootedGlob', () => {
         expect(rootedGlob('C:\\w\\project', '.\\**\\*.ghul')).toBe('C:/w/project/**/*.ghul');
     });
 
-    it('lets a tracker built from the ghul.json default claim the project\'s files', () => {
+    it('lets a tracker built from the default glob claim the project\'s files', () => {
         const tracker = new DocumentChangeTracker(
             new RecordingWorkspace(),
             { queueEdit3: jest.fn() } as unknown as EditQueue,
