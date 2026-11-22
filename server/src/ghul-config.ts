@@ -217,6 +217,18 @@ function readSourceGlobs(source_globs_file: string, problems: string[]): string[
 	}
 }
 
+// A compiler, and flags to pass it, named by a host that starts the server
+// and drives it itself, in the initializationOptions of its initialize
+// request: `compiler`, a command line or an array of its words, and
+// `compilerFlags`, likewise. The compiler is used where the project names none
+// itself - in a ghul.json, its .ghulproj, a ghul-project.json or a tool
+// manifest - and the flags where the workspace has no project file and no
+// ghul.json names any.
+export interface HostCompiler {
+	compiler?: string[] | string,
+	flags?: string[] | string,
+}
+
 // manifest_compiler is set for a ghul-project.json project: the command
 // ghul named, or null when it named none, whose problem has been reported.
 // Either way such a project takes its compiler from ghul rather than from a
@@ -226,7 +238,8 @@ export function getGhulConfig(
 	settings: EditorSettings = {},
 	response_file: string | null = null,
 	source_globs_file: string | null = null,
-	manifest_compiler?: string[] | null
+	manifest_compiler?: string[] | null,
+	host: HostCompiler = {}
 ): GhulConfig {
 	let problems: string[] = [];
 
@@ -248,6 +261,12 @@ export function getGhulConfig(
 			log(problem);
 			problems.push(problem);
 		}
+	}
+
+	// A project's own build names its options, so the host's flags are only
+	// for a workspace with no project file of either kind.
+	if (manifest_compiler === undefined && globSync(workspace + "/*.ghulproj").length == 0) {
+		config.other_flags ??= host.flags;
 	}
 
 	let config_json_source = config.source;
@@ -484,6 +503,14 @@ export function getGhulConfig(
 				log(problem);
 				problems.push(problem);
 			}
+		}
+
+		if (!compiler && host.compiler) {
+			compiler = typeof host.compiler == "string"
+				? parse(host.compiler).map(e => e.toString())
+				: host.compiler;
+
+			log(`will use compiler '${quote([...compiler, ...args])}' named by the client`);
 		}
 
 		if (!compiler) {

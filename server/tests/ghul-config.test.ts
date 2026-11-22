@@ -89,6 +89,74 @@ describe('getGhulConfig', () => {
         expect(cfg.arguments).toEqual(['--flag-one', '--flag-two=value', '-A', '--incremental-analysis']);
     });
 
+    it('uses the compiler and flags a host names when the workspace names neither', () => {
+        const workspace = ws();
+
+        const cfg = getGhulConfig(workspace, {}, null, null, undefined, {
+            compiler: 'dotnet /opt/ghul.dll',
+            flags: ['--target', 'wasm'],
+        });
+
+        expect(cfg.compiler).toEqual(['dotnet', '/opt/ghul.dll']);
+        expect(cfg.arguments).toEqual(['--target', 'wasm', '-A', '--incremental-analysis']);
+    });
+
+    it("prefers a tool manifest's compiler to the host's", () => {
+        const workspace = ws();
+        mkdirSync(join(workspace, '.config'));
+        writeJson(join(workspace, '.config'), 'dotnet-tools.json', {
+            version: 1,
+            isRoot: true,
+            tools: { 'ghul.compiler': { version: '1.0.0', commands: ['ghul-compiler'] } },
+        });
+
+        const cfg = getGhulConfig(workspace, {}, null, null, undefined, { compiler: ['from-host'] });
+
+        expect(cfg.compiler).toEqual(['dotnet', 'tool', 'run', 'ghul-compiler']);
+    });
+
+    it("prefers a .ghulproj's compiler to the host's, and takes no flags from the host", () => {
+        const workspace = ws();
+        writeFileSync(join(workspace, 'p.ghulproj'),
+            '<Project><PropertyGroup><GhulCompiler>from-project</GhulCompiler></PropertyGroup></Project>');
+
+        const cfg = getGhulConfig(workspace, {}, null, null, undefined, {
+            compiler: ['from-host'],
+            flags: ['--host-flag'],
+        });
+
+        expect(cfg.compiler).toEqual(['from-project']);
+        expect(cfg.arguments).not.toContain('--host-flag');
+    });
+
+    it("takes no flags from the host for a ghul-project.json project", () => {
+        const workspace = ws();
+
+        const cfg = getGhulConfig(workspace, {}, null, null, ['from-manifest'], {
+            compiler: ['from-host'],
+            flags: ['--host-flag'],
+        });
+
+        expect(cfg.compiler).toEqual(['from-manifest']);
+        expect(cfg.arguments).not.toContain('--host-flag');
+    });
+
+    it("prefers a ghul.json's compiler and flags to the host's", () => {
+        const workspace = ws();
+        writeJson(workspace, 'ghul.json', {
+            compiler: ['from-json'],
+            other_flags: ['--json-flag'],
+        });
+
+        const cfg = getGhulConfig(workspace, {}, null, null, undefined, {
+            compiler: ['from-host'],
+            flags: ['--host-flag'],
+        });
+
+        expect(cfg.compiler).toEqual(['from-json']);
+        expect(cfg.arguments).toEqual(['--json-flag', '-A', '--incremental-analysis']);
+    });
+
     it('expands directory-only source entries into glob patterns when a .ghulproj is present', () => {
         // The expansion path only fires when ghul.json gives source and a
         // single .ghulproj is also discoverable. Pin that combined behaviour

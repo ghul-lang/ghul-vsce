@@ -26,7 +26,7 @@ import { Watchdog } from './watchdog';
 import { Activity, ActivityProgress, ROUTINE_ANALYSIS_MESSAGE, SLOW_ACTIVITY_DELAY_MS } from './activity-progress';
 import { MetricsReporter } from './metrics-reporter';
 
-import { EditorSettings, getGhulConfig, GhulConfig } from './ghul-config';
+import { EditorSettings, getGhulConfig, GhulConfig, HostCompiler } from './ghul-config';
 import { restoreDotNetTools } from './restore-dotnet-tools';
 import { generateAssembliesJson } from './generate-assemblies-json';
 import { generateGhulOptionsJson } from './generate-ghul-options-json';
@@ -106,6 +106,9 @@ export class WorkspaceContext {
     // Whether a ghul-project.json is taken even beside a .ghulproj, as the
     // `ghul.projectFile` setting `manifest` asks.
     prefer_manifest: boolean = false;
+
+    // The compiler and flags the host named in its initializationOptions.
+    host_compiler: HostCompiler = {};
 
     private initialize_running: Promise<void> | null = null;
     private initialize_queued: Promise<void> | null = null;
@@ -387,9 +390,7 @@ export class WorkspaceContext {
             response_file = await this.resolveGhulprojOptions(problems, response_file, source_globs_file);
         }
 
-        this.config = manifest_compiler === undefined
-            ? getGhulConfig(this.workspace_root, settings, response_file, source_globs_file)
-            : getGhulConfig(this.workspace_root, settings, response_file, source_globs_file, manifest_compiler);
+        this.config = getGhulConfig(this.workspace_root, settings, response_file, source_globs_file, manifest_compiler, this.host_compiler);
 
         if (manifest_problems.length) {
             this.config.problems = [...manifest_problems, ...(this.config.problems ?? [])];

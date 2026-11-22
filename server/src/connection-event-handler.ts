@@ -53,6 +53,28 @@ import { ExtensionState, Use } from './extension-state';
 import { CompilerQuickFixProvider } from './compiler-quick-fix-provider';
 
 import { WorkspaceContext } from './workspace-context';
+import { HostCompiler } from './ghul-config';
+
+// A command line, or the array of its words; anything else is not one.
+function commandLine(value: unknown): string[] | string | undefined {
+    if (typeof value === 'string' && value.trim().length) {
+        return value;
+    }
+
+    if (Array.isArray(value) && value.every(word => typeof word === 'string')) {
+        return value;
+    }
+
+    return undefined;
+}
+
+// The compiler and flags a host names in its initializationOptions.
+function hostCompiler(options: any): HostCompiler {
+    return {
+        compiler: commandLine(options?.compiler),
+        flags: commandLine(options?.compilerFlags),
+    };
+}
 
 // Files whose changes affect analysis but which the editor does not
 // necessarily have open: the project files and build properties that define
@@ -251,6 +273,8 @@ export class ConnectionEventHandler {
         // Read before any folder is looked at, since it decides which file
         // each project is read from and which nested projects are its own.
         this.extension_state.setPreferManifest(params.initializationOptions?.projectFile === 'manifest');
+
+        this.extension_state.setHostCompiler(hostCompiler(params.initializationOptions));
 
         if (typeof initial_cap === 'number') {
             this.extension_state.setMaxAnalysers(initial_cap);
