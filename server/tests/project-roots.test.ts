@@ -69,6 +69,13 @@ describe('discoverRoots', () => {
         expect(found.collections).toEqual([]);
     });
 
+    it('is a project itself with no marker when it is opened as one', () => {
+        const found = discoverRoots(root, false, true);
+
+        expect(found.self).toBe('project');
+        expect(discoverRoots(root).self).toBe('none');
+    });
+
     it('is a project itself when its own marker says so, and still finds the projects nested in it', () => {
         project('.');
         project('unit-tests');

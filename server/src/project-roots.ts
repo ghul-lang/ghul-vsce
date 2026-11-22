@@ -107,7 +107,10 @@ export function expandMembers(workspace: string, members: string[]): string[] {
 // .ghulproj, as the `ghul.projectFile` setting `manifest` does, a nested
 // project under it whose directory the manifest's own source globs cover is
 // part of the folder's project, not a project of its own.
-export function discoverRoots(folder: string, prefer_manifest: boolean = false): DiscoveredRoots {
+//
+// `opened_as_project` makes the folder a project of its own whatever it
+// holds, as a host that names the compiler for it asks.
+export function discoverRoots(folder: string, prefer_manifest: boolean = false, opened_as_project: boolean = false): DiscoveredRoots {
     let own = classify(folder);
 
     let result: DiscoveredRoots = { self: 'none', projects: [], collections: [] };
@@ -126,7 +129,7 @@ export function discoverRoots(folder: string, prefer_manifest: boolean = false):
         return result;
     }
 
-    if (own?.kind === 'project' || isOpenedAsProject(folder)) {
+    if (own?.kind === 'project' || opened_as_project || isOpenedAsProject(folder)) {
         result.self = 'project';
     }
 

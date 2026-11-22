@@ -46,8 +46,9 @@ request:
 
 | Option | Meaning |
 |---|---|
-| `compiler` | The compiler command, as a command line or an array of its words, for a project that names none in a `ghul.json`, `.ghulproj`, `ghul-project.json` or tool manifest. |
+| `compiler` | The compiler command, as a command line or an array of its words, for a project that names none in a `ghul.json`, `.ghulproj`, `ghul-project.json` or tool manifest. Naming one makes each workspace folder a project of its own, with no project file needed. |
 | `compilerFlags` | Flags to pass the compiler, as a command line or an array of words, for a workspace with no project file whose `ghul.json` names none. |
+| `references` | The paths of the assemblies to analyse against, for a workspace with no project file and no `.assemblies.json`. |
 | `maxAnalysers` | The most analysers to keep running at once. |
 | `projectFile` | `manifest` takes a folder's `ghul-project.json` even where a `.ghulproj` sits beside it. |
 

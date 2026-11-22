@@ -276,7 +276,7 @@ export class ExtensionState {
     // project, whether it has no marker or is a workspace or a collection,
     // is never an analyser root.
     public addFolder(folder: string): WorkspaceContext | null {
-        const found = discoverRoots(folder, this.prefer_manifest);
+        const found = discoverRoots(folder, this.prefer_manifest, this.host_compiler.compiler !== undefined);
 
         this.discovered.set(folder, found);
 
@@ -326,7 +326,7 @@ export class ExtensionState {
         this.test_root_of_directory.clear();
 
         for (const folder of Array.from(this.discovered.keys())) {
-            this.discovered.set(folder, discoverRoots(folder, this.prefer_manifest));
+            this.discovered.set(folder, discoverRoots(folder, this.prefer_manifest, this.host_compiler.compiler !== undefined));
         }
 
         this.applyBoundaries();

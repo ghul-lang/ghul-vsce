@@ -244,6 +244,14 @@ describe('ConnectionEventHandler', () => {
             });
         });
 
+        it('takes references from initializationOptions, and ignores a list that is not all paths', () => {
+            handler.onInitialize({ initializationOptions: { references: ['/r/a.dll'] } } as any);
+            expect(extensionState.setHostCompiler).toHaveBeenLastCalledWith(expect.objectContaining({ references: ['/r/a.dll'] }));
+
+            handler.onInitialize({ initializationOptions: { references: ['/r/a.dll', 3] } } as any);
+            expect(extensionState.setHostCompiler).toHaveBeenLastCalledWith(expect.objectContaining({ references: undefined }));
+        });
+
         it('ignores a compiler or compiler flags in initializationOptions that are not a command line', () => {
             handler.onInitialize({ initializationOptions: { compiler: 42, compilerFlags: ['--ok', 7] } } as any);
 
